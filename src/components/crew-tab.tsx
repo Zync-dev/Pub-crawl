@@ -9,6 +9,8 @@ import { forgetCrawl } from "@/lib/recent";
 import type { Crawl, Drink, Member } from "@/lib/types";
 import type { useLocationSharing } from "@/lib/use-location";
 import { useAsk } from "./ask";
+import { InstallCard } from "./install-card";
+import { PushSettings } from "./push-settings";
 import type { CrawlActions } from "./crawl-app";
 import { Avatar, Badge, Button, Card, Switch, Tabs } from "./ds";
 
@@ -161,6 +163,10 @@ function Settings({
         </p>
         {location.error && <p className="text-[13px] text-oxblood-500">{location.error}</p>}
       </Card>
+
+      {/* pwa-push: beskeder og hjemmeskærm */}
+      <PushSettings />
+      <InstallCard />
 
       <Card className="flex flex-col gap-2">
         <Button

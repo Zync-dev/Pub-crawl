@@ -9,6 +9,7 @@ import { getSupabase } from "@/lib/supabase";
 import { formatClock, formatTime, remainingMs } from "@/lib/timer";
 import type { Crawl, Drink, DrinkKind, LatLng, Stop } from "@/lib/types";
 import { useCrawl, useNow } from "@/lib/use-crawl";
+import { useCrewNotifications } from "@/lib/use-crew-notifications";
 import { useLocationSharing } from "@/lib/use-location";
 import { useAsk } from "./ask";
 import { CrewTab } from "./crew-tab";
@@ -205,6 +206,8 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
   const currentStop = stops.find((s) => s.id === crawl.current_stop_id) ?? null;
   const nextStop = currentStop ? null : (stops.find((s) => !s.visited_at) ?? null);
   const remaining = remainingMs(crawl, currentStop, now);
+  // pwa-push: "Sidste omgang" til holdet, når timeren løber ud.
+  useCrewNotifications(crawl, currentStop, remaining);
 
   const back = (
     <Link href="/" className="pc-btn pc-btn--ghost pc-btn--sm" style={{ paddingLeft: 6 }}>

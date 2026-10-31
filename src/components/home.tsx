@@ -7,6 +7,7 @@ import { readRecent, rememberCrawl, type RecentCrawl } from "@/lib/recent";
 import { ensureUser, errorText, getSupabase, supabaseConfigured } from "@/lib/supabase";
 import type { Crawl } from "@/lib/types";
 import { Button, Icon, Input, Logo, Spinner, Tabs } from "./ds";
+import { InstallCard } from "./install-card";
 
 const J_DAY = { year: 2026, month: 10, day: 6 };
 
@@ -85,6 +86,9 @@ export function Home() {
       </div>
 
       <div className="pc-enter mx-auto flex w-full max-w-sm flex-col gap-4" style={{ animationDelay: "80ms" }}>
+        {/* pwa-push: guide til hjemmeskærmen */}
+        <InstallCard tone="dark" />
+
         {recent.length > 0 && (
           <div className="flex flex-col gap-2">
             <p className="pc-label text-gold-300">Dine ture</p>
