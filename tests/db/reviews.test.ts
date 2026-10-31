@@ -171,9 +171,10 @@ describe("billeder i storage", () => {
       noRows(await b.c.from("photos").delete().eq("id", row.id).select());
       noRows(await o.c.from("photos").delete().eq("id", row.id).select());
       expect(ok(await a.c.from("photos").delete().eq("id", row.id).select())).toHaveLength(1);
-      // Også hvis filen ikke nåede at blive slettet, kan holdet ikke længere se den.
-      denied(await b.c.storage.from("photos").download(aPhoto));
-      ok(await a.c.storage.from("photos").download(aPhoto));
+      // Også hvis filen ikke nåede at blive slettet, kan holdet ikke længere se den. Signerede links spørger
+      // altid databasen. download kan få et svar fra Supabases CDN, fordi b hentede filen lige før.
+      denied(await b.c.storage.from("photos").createSignedUrl(aPhoto, 60));
+      ok(await a.c.storage.from("photos").createSignedUrl(aPhoto, 60));
     });
   });
 });

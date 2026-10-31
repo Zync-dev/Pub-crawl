@@ -55,6 +55,8 @@ describe("give_round (0018)", () => {
   type Given = { round: Round; existed: boolean };
 
   it("skriver kun én omgang, når to trykker samtidig", async () => {
+    // r2 er en omgang på a fra få sekunder siden. Den ville tælle som "lige givet" og give existed for begge.
+    ok(await b.c.from("rounds").delete().eq("id", r2.id));
     const [x, y] = await Promise.all([
       a.c.rpc("give_round", { p_crawl: crawl.id, p_buyer: a.id }),
       b.c.rpc("give_round", { p_crawl: crawl.id, p_buyer: a.id }),
@@ -63,8 +65,8 @@ describe("give_round (0018)", () => {
     const second = ok(y) as Given;
     expect(first.round.id).toBe(second.round.id);
     expect([first.existed, second.existed].sort()).toEqual([false, true]);
-    const creator = first.round.created_by === a.id ? a : b;
-    ok(await creator.c.from("rounds").delete().eq("id", first.round.id));
+    // Omgangen bliver stående i stedet for r2, så "omgangene forsvinder med den, der går hjem" stadig har en på a.
+    r2 = first.round;
   });
 
   it("skriver en til, når man beder om det", async () => {
