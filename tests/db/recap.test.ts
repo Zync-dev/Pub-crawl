@@ -1,25 +1,15 @@
 // Aftenens regnskab (migration 0011_recap.sql): databasen skriver stops.left_at, når holdet går videre.
 // Kør med `pnpm test:db`. Opretter turen "Test recap" med to deltagere og rydder op ved at forlade den.
 // Er migrationen ikke kørt endnu, springes testene over.
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Crawl, Stop } from "@/lib/types";
+import { leave, users, type TestUser } from "./helpers";
 
 type RecapStop = Stop & { left_at: string | null };
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-
-async function signedIn() {
-  if (!url || !key) throw new Error("NEXT_PUBLIC_SUPABASE_URL og NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY mangler i .env.local");
-  const c = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data, error } = await c.auth.signInAnonymously();
-  if (error || !data.user) throw error ?? new Error("Ingen bruger");
-  return { c, id: data.user.id };
-}
-
-let a: { c: SupabaseClient; id: string };
-let b: { c: SupabaseClient; id: string };
+// Delte testbrugere fra setup.ts. Turen oprettes af pool-bruger c, som opretter færrest ture pr. kørsel.
+let a: TestUser;
+let b: TestUser;
 let crawl: Crawl;
 let first: RecapStop;
 let second: RecapStop;
@@ -31,7 +21,7 @@ async function leftAt(id: string) {
   return data.left_at;
 }
 
-async function setCurrent(u: { c: SupabaseClient }, stopId: string | null) {
+async function setCurrent(u: TestUser, stopId: string | null) {
   const { error } = await u.c
     .from("crawls")
     .update({ current_stop_id: stopId, arrived_at: stopId ? new Date().toISOString() : null })
@@ -40,11 +30,11 @@ async function setCurrent(u: { c: SupabaseClient }, stopId: string | null) {
 }
 
 beforeAll(async () => {
-  [a, b] = await Promise.all([signedIn(), signedIn()]);
-  const created = await a.c.rpc("create_crawl", { p_name: "Test recap", p_member_name: "Test A" }).single<Crawl>();
+  ({ c: a, b } = users());
+  const created = await a.c.rpc("create_crawl", { p_name: "Test recap", p_member_name: a.name }).single<Crawl>();
   if (created.error || !created.data) throw created.error ?? new Error("Ingen tur");
   crawl = created.data;
-  const joined = await b.c.rpc("join_crawl", { p_code: crawl.code, p_member_name: "Test B" });
+  const joined = await b.c.rpc("join_crawl", { p_code: crawl.code, p_member_name: b.name });
   if (joined.error) throw joined.error;
   const stops = await a.c
     .from("stops")
@@ -61,11 +51,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  for (const u of [b, a]) {
-    if (!u || !crawl) continue;
-    await u.c.from("members").delete().eq("crawl_id", crawl.id).eq("user_id", u.id);
-    await u.c.auth.signOut();
-  }
+  // Brugerne genbruges i næste kørsel, så de logges ikke ud.
+  await leave(crawl, b, a);
 });
 
 describe("stops.left_at", () => {

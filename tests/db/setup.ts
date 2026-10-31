@@ -20,7 +20,8 @@ declare module "vitest" {
 }
 
 const POOL: PoolName[] = ["a", "b", "c", "o"];
-// Hver bruger opretter højst 3 ture pr. kørsel. 5 kørsler giver 15, under loftet på 20.
+// Hver bruger opretter højst 4 ture pr. kørsel (a: rls, rounds, reviews, arranger). 5 kørsler giver 20,
+// og loftet afviser først den 21. (create_crawl tjekker "mindst 20" før indsættelsen).
 const MAX_RUNS = 5;
 const cacheFile = fileURLToPath(new URL("../../node_modules/.cache/pub-crawl-db/users.json", import.meta.url));
 
