@@ -1,6 +1,15 @@
 "use client";
 
-import { createContext, useCallback, useContext, useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { Button, Dialog, Input, Toast } from "./ds";
 
 type ConfirmOptions = {
@@ -44,33 +53,56 @@ export function useAsk() {
 export function AskProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<Pending | null>(null);
   const [value, setValue] = useState("");
-  const [toast, setToast] = useState<{ message: string; tone: "default" | "danger"; id: number } | null>(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [leaving, setLeaving] = useState(false);
+  const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [toast, setToast] = useState<{
+    message: string;
+    tone: "default" | "danger";
+    id: number;
+    leaving: boolean;
+  } | null>(null);
+  const toastTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const open = useCallback((next: Pending) => {
+    if (leaveTimer.current) clearTimeout(leaveTimer.current);
+    setLeaving(false);
+    setPending(next);
+  }, []);
 
   const confirm = useCallback(
-    (o: ConfirmOptions) => new Promise<boolean>((resolve) => setPending({ kind: "confirm", resolve, ...o })),
-    [],
+    (o: ConfirmOptions) => new Promise<boolean>((resolve) => open({ kind: "confirm", resolve, ...o })),
+    [open],
   );
   const prompt = useCallback(
     (o: PromptOptions) =>
       new Promise<string | null>((resolve) => {
         setValue(o.initial ?? "");
-        setPending({ kind: "prompt", resolve, ...o });
+        open({ kind: "prompt", resolve, ...o });
       }),
-    [],
+    [open],
   );
   const showToast = useCallback((message: string, tone: "default" | "danger" = "default") => {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToast({ message, tone, id: Date.now() });
-    toastTimer.current = setTimeout(() => setToast(null), 2600);
+    toastTimers.current.forEach(clearTimeout);
+    setToast({ message, tone, id: Date.now(), leaving: false });
+    toastTimers.current = [
+      setTimeout(() => setToast((t) => (t ? { ...t, leaving: true } : t)), 2600),
+      setTimeout(() => setToast(null), 2760),
+    ];
   }, []);
 
+  // Svaret gives med det samme. Dialogen bliver lidt længere, så den kan glide ud.
   function close(result: boolean) {
-    if (!pending) return;
+    if (!pending || leaving) return;
     if (pending.kind === "confirm") pending.resolve(result);
     else pending.resolve(result && value.trim() ? value.trim() : null);
-    setPending(null);
+    setLeaving(true);
+    leaveTimer.current = setTimeout(() => {
+      setPending(null);
+      setLeaving(false);
+    }, 150);
   }
+
+  const ask = useMemo(() => ({ confirm, prompt, toast: showToast }), [confirm, prompt, showToast]);
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -78,13 +110,14 @@ export function AskProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AskContext.Provider value={{ confirm, prompt, toast: showToast }}>
+    <AskContext.Provider value={ask}>
       {children}
       <Dialog
         open={pending !== null}
         eyebrow={pending?.eyebrow}
         title={pending?.title}
         onClose={() => close(false)}
+        leaving={leaving}
       >
         {pending?.kind === "confirm" && (
           <>
@@ -126,7 +159,7 @@ export function AskProvider({ children }: { children: ReactNode }) {
           className="pointer-events-none fixed inset-x-0 z-[2100] flex justify-center px-4"
           style={{ bottom: "calc(96px + env(safe-area-inset-bottom))" }}
         >
-          <Toast message={toast.message} tone={toast.tone} />
+          <Toast message={toast.message} tone={toast.tone} leaving={toast.leaving} />
         </div>
       )}
     </AskContext.Provider>

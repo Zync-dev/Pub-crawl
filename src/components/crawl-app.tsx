@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { drawChallenge } from "@/lib/challenges";
 import { DRINK_BY_KIND, formatUnits } from "@/lib/drinks";
 import { distanceMeters, formatDistance } from "@/lib/geo";
@@ -12,7 +12,7 @@ import { useCrawl, useNow } from "@/lib/use-crawl";
 import { useLocationSharing } from "@/lib/use-location";
 import { useAsk } from "./ask";
 import { CrewTab } from "./crew-tab";
-import { Badge, Header, Icon, TabBar } from "./ds";
+import { Badge, Header, Icon, Spinner, TabBar } from "./ds";
 import { MapTab } from "./map-tab";
 import { NowTab } from "./now-tab";
 import { StatsTab } from "./stats-tab";
@@ -134,27 +134,33 @@ function useActions(
       await run(supabase.from("stops").delete().eq("id", stop.id));
     },
     async addDrink(kind: DrinkKind) {
-      const { data, error } = await supabase
-        .from("drinks")
-        .insert({
-          crawl_id: id,
-          user_id: userId,
-          stop_id: crawl.current_stop_id,
-          kind,
-          units: DRINK_BY_KIND[kind].units,
-        })
-        .select()
-        .single<Drink>();
+      // Vises med det samme og byttes ud med rækken fra databasen, når den kommer.
+      const row = {
+        crawl_id: id,
+        user_id: userId,
+        stop_id: crawl.current_stop_id,
+        kind,
+        units: DRINK_BY_KIND[kind].units,
+      };
+      const temp: Drink = { ...row, id: `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`, created_at: new Date().toISOString() };
+      patch((p) => ({ ...p, drinks: [...p.drinks, temp] }));
+      const { data, error } = await supabase.from("drinks").insert(row).select().single<Drink>();
       if (error || !data) {
+        patch((p) => ({ ...p, drinks: p.drinks.filter((d) => d.id !== temp.id) }));
         ask.toast("Den kom ikke med. Prøv igen.", "danger");
         return;
       }
-      patch((p) => ({ ...p, drinks: [...p.drinks.filter((d) => d.id !== data.id), data] }));
-      ask.toast(`${DRINK_BY_KIND[kind].label} skrevet på`);
+      patch((p) => ({
+        ...p,
+        drinks: [...p.drinks.filter((d) => d.id !== temp.id && d.id !== data.id), data],
+      }));
     },
     async deleteDrink(drink: Drink) {
+      if (drink.id.startsWith("tmp-")) return;
       patch((p) => ({ ...p, drinks: p.drinks.filter((d) => d.id !== drink.id) }));
-      await run(supabase.from("drinks").delete().eq("id", drink.id));
+      if (!(await run(supabase.from("drinks").delete().eq("id", drink.id)))) {
+        patch((p) => ({ ...p, drinks: [...p.drinks, drink].sort((a, b) => a.created_at.localeCompare(b.created_at)) }));
+      }
     },
     async rename(name: string) {
       const clean = name.trim().slice(0, 30);
@@ -183,6 +189,16 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
   const now = useNow(1000);
   const location = useLocationSharing(crawl.id, userId);
   const [tab, setTab] = useState<Tab>("now");
+  const [mapMounted, setMapMounted] = useState(false);
+  const scroller = useRef<HTMLElement>(null);
+  // Kort og lister behøver ikke at tegnes om hvert sekund.
+  const slowNow = Math.floor(now / 30_000) * 30_000;
+
+  function changeTab(next: Tab) {
+    if (next === "route") setMapMounted(true);
+    if (next !== tab) scroller.current?.scrollTo({ top: 0 });
+    setTab(next);
+  }
 
   const memberNames = useMemo(() => members.map((m) => m.name), [members]);
   const actions = useActions(crawl, stops, memberNames, userId, data.patch);
@@ -200,11 +216,29 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
   // Timeren følger med i toppen, når man kigger på de andre faner.
   const timerBadge =
     tab !== "now" && remaining !== null ? (
-      <button onClick={() => setTab("now")} aria-label="Gå til timeren" style={{ background: "none", border: 0, padding: 0 }}>
+      <button
+        type="button"
+        onClick={() => changeTab("now")}
+        aria-label="Gå til timeren"
+        className="rounded-full"
+        style={{ background: "none", border: 0, padding: 0 }}
+      >
         <Badge tone={remaining < 0 ? "oxblood" : "gold"} icon="timer">
-          {formatClock(remaining)}
+          <span className="tabular-nums">{formatClock(remaining)}</span>
         </Badge>
       </button>
+    ) : undefined;
+
+  const headerRight =
+    data.offline || timerBadge ? (
+      <div className="flex flex-col items-end gap-1.5">
+        {data.offline && (
+          <span className="pc-fade-in" role="status">
+            <Badge tone="oxblood">Ingen forbindelse</Badge>
+          </span>
+        )}
+        {timerBadge}
+      </div>
     ) : undefined;
 
   const header = (() => {
@@ -248,51 +282,70 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-cream-200">
-      <Header eyebrow={header.eyebrow} title={header.title} left={back} right={timerBadge} />
+      <Header eyebrow={header.eyebrow} title={header.title} left={back} right={headerRight} />
 
-      <main className="min-h-0 flex-1 overflow-y-auto">
-        {tab === "now" && (
-          <NowTab
-            crawl={crawl}
-            stops={stops}
-            drinks={drinks}
-            currentStop={currentStop}
-            nextStop={nextStop}
-            remaining={remaining}
-            userId={userId}
-            now={now}
-            actions={actions}
-            onOpenRoute={() => setTab("route")}
-          />
-        )}
-        {tab === "route" && (
-          <MapTab
-            stops={stops}
-            members={members}
-            userId={userId}
-            currentStopId={crawl.current_stop_id}
-            myPosition={location.position}
-            now={now}
-            actions={actions}
-          />
-        )}
-        {tab === "stats" && (
-          <StatsTab members={members} drinks={drinks} stops={stops} userId={userId} now={now} />
-        )}
-        {tab === "crew" && (
-          <CrewTab
-            crawl={crawl}
-            members={members}
-            drinks={drinks}
-            userId={userId}
-            now={now}
-            location={location}
-            actions={actions}
-          />
+      <main ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
+        {!data.loaded ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-green-800">
+            <Spinner size={28} label="Henter turen" />
+            <p className="pc-eyebrow text-muted">Henter turen</p>
+          </div>
+        ) : (
+          <>
+            {tab === "now" && (
+              <div key="now" className="pc-enter">
+                <NowTab
+                  crawl={crawl}
+                  stops={stops}
+                  drinks={drinks}
+                  currentStop={currentStop}
+                  nextStop={nextStop}
+                  remaining={remaining}
+                  userId={userId}
+                  now={now}
+                  actions={actions}
+                  onOpenRoute={() => changeTab("route")}
+                />
+              </div>
+            )}
+            {/* Kortet bliver liggende, så det ikke skal hente fliserne igen ved hvert fanebyt. */}
+            {mapMounted && (
+              <div className={tab === "route" ? "pc-enter" : "hidden"}>
+                <MapTab
+                  visible={tab === "route"}
+                  stops={stops}
+                  members={members}
+                  userId={userId}
+                  currentStopId={crawl.current_stop_id}
+                  myPosition={location.position}
+                  now={slowNow}
+                  actions={actions}
+                />
+              </div>
+            )}
+            {tab === "stats" && (
+              <div key="stats" className="pc-enter">
+                <StatsTab members={members} drinks={drinks} stops={stops} userId={userId} now={slowNow} />
+              </div>
+            )}
+            {tab === "crew" && (
+              <div key="crew" className="pc-enter">
+                <CrewTab
+                  crawl={crawl}
+                  members={members}
+                  drinks={drinks}
+                  userId={userId}
+                  now={slowNow}
+                  location={location}
+                  actions={actions}
+                />
+              </div>
+            )}
+          </>
         )}
       </main>
 
-      <TabBar items={[...TABS]} value={tab} onChange={setTab} />
+      <TabBar items={[...TABS]} value={tab} onChange={changeTab} />
     </div>
   );
 }

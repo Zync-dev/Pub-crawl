@@ -43,7 +43,7 @@ export function CrewTab({
           onChange={setTab}
         />
       </div>
-      <div className="flex flex-col gap-2.5 px-4 py-3.5">
+      <div key={tab} className="pc-enter flex flex-col gap-2.5 px-4 py-3.5">
         {tab === "crew" ? (
           <Crew crawl={crawl} members={members} drinks={drinks} userId={userId} now={now} />
         ) : (
@@ -102,11 +102,16 @@ function Crew({
         </Button>
       </Card>
 
-      {members.map((m) => {
+      {members.map((m, i) => {
         const me = m.user_id === userId;
         const units = drinks.filter((d) => d.user_id === m.user_id).reduce((sum, d) => sum + Number(d.units), 0);
         return (
-          <Card key={m.user_id} padding="12px 14px" className="flex items-center gap-3">
+          <Card
+            key={m.user_id}
+            padding="12px 14px"
+            className="pc-enter flex items-center gap-3"
+            style={{ animationDelay: `${Math.min(i + 1, 6) * 40}ms` }}
+          >
             <Avatar name={m.name} tone={memberTone(m.color)} size={40} ring={me} />
             <div className="min-w-0 flex-1">
               <div className="truncate font-serif text-[20px] leading-tight">

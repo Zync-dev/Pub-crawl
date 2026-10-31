@@ -51,6 +51,152 @@ button {
   cursor: pointer;
 }
 
+button,
+a,
+input {
+  touch-action: manipulation;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 0;
+  box-shadow: var(--ring-focus);
+}
+
+/* Bevægelse: kun fade og et løft på 10px, 140–220ms, som designsystemet foreskriver. */
+@keyframes pc-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes pc-sink {
+  to {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@keyframes pc-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes pc-float {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 0);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -28px);
+  }
+}
+
+@keyframes pc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.pc-enter {
+  animation: pc-rise var(--dur-base) var(--ease) both;
+}
+
+.pc-fade-in {
+  animation: pc-fade var(--dur-base) var(--ease) both;
+}
+
+.pc-pop {
+  animation: pc-rise var(--dur-fast) var(--ease) both;
+}
+
+.pc-grow {
+  transform-origin: left center;
+  animation: pc-grow 420ms var(--ease) both;
+}
+
+.pc-float {
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  pointer-events: none;
+  animation: pc-float 700ms var(--ease) forwards;
+}
+
+.pc-dialog__scrim.is-leaving {
+  animation: pc-fade-out var(--dur-fast) var(--ease) forwards;
+}
+
+.pc-dialog__scrim.is-leaving .pc-dialog,
+.pc-toast.is-leaving {
+  animation: pc-sink var(--dur-fast) var(--ease) forwards;
+}
+
+/* Spinneren er den eneste løkke i appen, og den vises kun, mens vi venter. */
+.pc-spinner {
+  display: inline-block;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  opacity: 0.85;
+  animation: pc-spin 0.8s linear infinite;
+}
+
+.pc-btn[aria-busy="true"] {
+  cursor: progress;
+}
+
+.pc-btn[aria-busy="true"]:disabled {
+  opacity: 0.85;
+}
+
+.pc-tabbar__item {
+  position: relative;
+}
+
+.pc-tabbar__item::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  width: 22px;
+  height: 2px;
+  margin-left: -11px;
+  background: var(--gold-500);
+  transform: scaleX(0);
+  transition: transform var(--dur-base) var(--ease);
+}
+
+.pc-tabbar__item.is-active::before {
+  transform: scaleX(1);
+}
+
+.pc-tabbar__item:active {
+  transform: translateY(1px);
+}
+
+.pc-stop {
+  transition:
+    background var(--dur-base) var(--ease),
+    color var(--dur-base) var(--ease),
+    border-color var(--dur-base) var(--ease),
+    transform 80ms;
+}
+
+.pc-switch:focus-visible {
+  box-shadow: none;
+}
+
+.pc-switch:focus-visible .pc-switch__track {
+  box-shadow: var(--ring-focus);
+}
+
 /* Tilpasninger af designsystemet til en rigtig telefon. */
 .pc-dialog__scrim {
   position: fixed;
@@ -80,10 +226,16 @@ button {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pc-dialog,
-  .pc-dialog__scrim,
-  .pc-toast {
-    animation: none;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
+  }
+
+  .pc-spinner {
+    animation-duration: 1.6s !important;
   }
 }
 
@@ -126,4 +278,9 @@ button {
 .map-marker {
   background: none;
   border: none;
+}
+
+.map-adding .leaflet-container,
+.map-adding .leaflet-interactive {
+  cursor: crosshair;
 }

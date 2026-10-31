@@ -8,7 +8,7 @@ import { ensureUser, errorText, getSupabase, supabaseConfigured } from "@/lib/su
 import type { Crawl } from "@/lib/types";
 import { AskProvider } from "./ask";
 import { CrawlApp } from "./crawl-app";
-import { Button, Input, Logo } from "./ds";
+import { Button, Input, Logo, Spinner } from "./ds";
 
 type State =
   | { step: "loading" }
@@ -71,7 +71,12 @@ export function CrawlGate({ code }: { code: string }) {
 
   return (
     <Splash>
-      {state.step === "loading" && <p className="pc-eyebrow text-center text-gold-300">Henter turen</p>}
+      {state.step === "loading" && (
+        <div className="pc-fade-in flex flex-col items-center gap-3 text-gold-500">
+          <Spinner size={26} label="Henter turen" />
+          <p className="pc-eyebrow text-gold-300">Henter turen</p>
+        </div>
+      )}
       {state.step === "error" && (
         <Panel>
           <p className="mb-4 text-oxblood-500">{state.message}</p>
@@ -109,7 +114,7 @@ export function CrawlGate({ code }: { code: string }) {
 function Splash({ children }: { children: ReactNode }) {
   return (
     <main className="pc-on-dark flex min-h-dvh flex-1 flex-col bg-green-800 px-5 pb-[max(32px,env(safe-area-inset-bottom))] pt-[max(48px,env(safe-area-inset-top))]">
-      <div className="flex flex-1 items-center justify-center py-6">
+      <div className="pc-fade-in flex flex-1 items-center justify-center py-6">
         <Logo size={0.8} />
       </div>
       <div className="mx-auto w-full max-w-sm">{children}</div>
@@ -119,7 +124,7 @@ function Splash({ children }: { children: ReactNode }) {
 
 function Panel({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-[var(--radius-md)] bg-cream-100 p-5 text-body" style={{ border: "var(--rule-double)" }}>
+    <div className="pc-enter rounded-[var(--radius-md)] bg-cream-100 p-5 text-body" style={{ border: "var(--rule-double)" }}>
       {children}
     </div>
   );
@@ -174,8 +179,8 @@ function JoinForm({
           error={error}
           required
         />
-        <Button type="submit" variant="primary" size="lg" fullWidth iconRight="chevron-right" disabled={busy}>
-          {busy ? "Hopper med…" : "Hop med på turen"}
+        <Button type="submit" variant="primary" size="lg" fullWidth iconRight="chevron-right" loading={busy}>
+          {busy ? "Hopper med" : "Hop med på turen"}
         </Button>
       </form>
     </Panel>

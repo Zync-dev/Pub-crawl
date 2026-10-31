@@ -13,6 +13,8 @@ export function formatClock(ms: number) {
   return `${ms < 0 ? "+" : ""}${m}:${String(s).padStart(2, "0")}`;
 }
 
+// 24-timers tid med kolon (21:15), som designsystemet skriver den.
 export function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" });
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }

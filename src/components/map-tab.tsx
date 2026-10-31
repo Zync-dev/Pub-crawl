@@ -3,19 +3,25 @@
 import dynamic from "next/dynamic";
 import { useRef, useState, type FormEvent } from "react";
 import { DEFAULT_CENTER, distanceMeters, formatDistance, walkingMinutes } from "@/lib/geo";
-import { nearbyBars, searchPlaces } from "@/lib/places";
+import { boundsAround, nearbyBars, searchPlaces, type Bounds } from "@/lib/places";
 import { formatTime } from "@/lib/timer";
 import type { LatLng, Member, NearbyPlace, Stop } from "@/lib/types";
 import { useAsk } from "./ask";
 import type { CrawlActions } from "./crawl-app";
-import { Button, Card, IconButton, Input, SectionTitle, StopCard } from "./ds";
+import { Button, Card, IconButton, Input, SectionTitle, Spinner, StopCard } from "./ds";
 
 const MapView = dynamic(() => import("./map-view"), {
   ssr: false,
-  loading: () => <div className="pc-eyebrow flex h-full items-center justify-center text-muted">Henter kortet</div>,
+  loading: () => (
+    <div className="flex h-full flex-col items-center justify-center gap-3 bg-cream-300 text-green-800">
+      <Spinner size={24} />
+      <span className="pc-eyebrow text-muted">Henter kortet</span>
+    </div>
+  ),
 });
 
 export function MapTab({
+  visible,
   stops,
   members,
   userId,
@@ -24,6 +30,7 @@ export function MapTab({
   now,
   actions,
 }: {
+  visible: boolean;
   stops: Stop[];
   members: Member[];
   userId: string;
@@ -33,12 +40,12 @@ export function MapTab({
   actions: CrawlActions;
 }) {
   const ask = useAsk();
-  const center = useRef<LatLng>(DEFAULT_CENTER);
+  const view = useRef<Bounds>(boundsAround(DEFAULT_CENTER, 0.01));
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
   const [nearby, setNearby] = useState<NearbyPlace[]>([]);
   const [results, setResults] = useState<NearbyPlace[] | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"nearby" | "search" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [focus, setFocus] = useState<{ at: LatLng; seq: number } | null>(null);
 
@@ -50,6 +57,7 @@ export function MapTab({
     await actions.addStop(name, at);
     setNearby((list) => list.filter((p) => p.lat !== at.lat || p.lng !== at.lng));
     setResults(null);
+    setMessage(null);
   }
 
   async function onMapClick(at: LatLng) {
@@ -76,10 +84,10 @@ export function MapTab({
   }
 
   async function findNearby() {
-    setBusy(true);
+    setBusy("nearby");
     setMessage(null);
     try {
-      const found = await nearbyBars(center.current);
+      const found = await nearbyBars(view.current);
       const onRoute = (p: NearbyPlace) => stops.some((s) => distanceMeters(s, p) < 25);
       const fresh = found.filter((p) => !onRoute(p));
       setNearby(fresh);
@@ -91,23 +99,23 @@ export function MapTab({
     } catch {
       setMessage("Kunne ikke hente pubs lige nu. Prøv igen om lidt.");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
   async function search(e: FormEvent) {
     e.preventDefault();
     if (!query.trim()) return;
-    setBusy(true);
+    setBusy("search");
     setMessage(null);
     try {
-      const found = await searchPlaces(query, center.current);
+      const found = await searchPlaces(query, view.current);
       setResults(found);
       if (!found.length) setMessage("Ingen resultater.");
     } catch {
       setMessage("Søgningen virker ikke lige nu.");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -126,7 +134,8 @@ export function MapTab({
           now={now}
           onMapClick={(at) => void onMapClick(at)}
           onPickNearby={(p) => void onPickNearby(p)}
-          onCenterChange={(at) => (center.current = at)}
+          onViewChange={(b) => (view.current = b)}
+          visible={visible}
         />
         {adding && (
           <div className="pointer-events-none absolute inset-x-0 top-3 z-[1000] flex justify-center">
@@ -143,7 +152,14 @@ export function MapTab({
             >
               {adding ? "Fortryd" : "Sæt en pub"}
             </Button>
-            <Button variant="primary" size="sm" icon="search" disabled={busy} onClick={() => void findNearby()}>
+            <Button
+              variant="primary"
+              size="sm"
+              icon="search"
+              loading={busy === "nearby"}
+              disabled={busy !== null}
+              onClick={() => void findNearby()}
+            >
               Pubs her
             </Button>
           </div>
@@ -166,15 +182,25 @@ export function MapTab({
             placeholder="Navn eller adresse"
             enterKeyHint="search"
           />
-          <Button type="submit" variant="secondary" disabled={busy} style={{ height: 48 }}>
+          <Button
+            type="submit"
+            variant="secondary"
+            loading={busy === "search"}
+            disabled={busy !== null}
+            style={{ height: 48 }}
+          >
             Søg
           </Button>
         </form>
 
-        {message && <p className="text-sm text-muted">{message}</p>}
+        {message && (
+          <p key={message} className="pc-fade-in text-sm text-muted" role="status">
+            {message}
+          </p>
+        )}
 
         {results && results.length > 0 && (
-          <Card padding="4px 0">
+          <Card padding="4px 0" className="pc-enter">
             <ul className="divide-y divide-line">
               {results.map((r) => (
                 <li key={r.id} className="flex items-center gap-3 px-4 py-2">
@@ -266,7 +292,11 @@ function RouteList({
             .filter(Boolean)
             .join(" · ");
           return (
-            <li key={stop.id} className="flex flex-col gap-2">
+            <li
+              key={stop.id}
+              className="pc-enter flex flex-col gap-2"
+              style={{ animationDelay: `${Math.min(i, 6) * 40}ms` }}
+            >
               <StopCard
                 number={i + 1}
                 total={stops.length}
@@ -291,7 +321,7 @@ function RouteList({
                 )}
               </StopCard>
               {editing && (
-                <div className="flex flex-wrap items-center gap-2 pl-2">
+                <div className="pc-enter flex flex-wrap items-center gap-2 pl-2">
                   <IconButton icon="arrow-up" label="Flyt op" variant="secondary" size="sm" disabled={i === 0} onClick={() => void actions.moveStop(stop, -1)} />
                   <IconButton icon="arrow-down" label="Flyt ned" variant="secondary" size="sm" disabled={i === stops.length - 1} onClick={() => void actions.moveStop(stop, 1)} />
                   <div className="flex h-[34px] items-center rounded-[var(--radius-sm)] border-[1.5px] border-green-800 px-1 text-green-800">

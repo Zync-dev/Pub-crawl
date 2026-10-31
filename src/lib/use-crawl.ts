@@ -24,6 +24,9 @@ export function useCrawl(crawlId: string, initial: Crawl) {
     drinks: [],
   });
   const [loaded, setLoaded] = useState(false);
+  // Antag forbindelse, indtil vi hører andet, så der ikke blinker en advarsel ved start.
+  const [connected, setConnected] = useState(true);
+  const [online, setOnline] = useState(true);
 
   const refetch = useCallback(async () => {
     const supabase = getSupabase();
@@ -98,7 +101,12 @@ export function useCrawl(crawlId: string, initial: Crawl) {
         void refetch();
       })
       .subscribe((status) => {
-        if (status === "SUBSCRIBED") void refetch();
+        if (status === "SUBSCRIBED") {
+          setConnected(true);
+          void refetch();
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          setConnected(false);
+        }
       });
 
     // Når telefonen vågner igen, kan vi have misset noget.
@@ -106,8 +114,17 @@ export function useCrawl(crawlId: string, initial: Crawl) {
       if (document.visibilityState === "visible") void refetch();
     };
     document.addEventListener("visibilitychange", onVisible);
+    const onOnline = () => {
+      setOnline(true);
+      void refetch();
+    };
+    const onOffline = () => setOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
       void supabase.removeChannel(channel);
     };
   }, [crawlId, refetch]);
@@ -117,7 +134,7 @@ export function useCrawl(crawlId: string, initial: Crawl) {
     setData(update);
   }, []);
 
-  return { ...data, loaded, refetch, patch };
+  return { ...data, loaded, offline: !online || !connected, refetch, patch };
 }
 
 export function useNow(intervalMs = 1000) {

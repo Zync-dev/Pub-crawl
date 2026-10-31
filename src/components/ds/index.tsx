@@ -16,12 +16,26 @@ export { Icon, type IconName };
 
 type Variant = "primary" | "gold" | "secondary" | "ghost" | "danger";
 
+export function Spinner({ size = 18, label }: { size?: number; label?: string }) {
+  return (
+    <span
+      className="pc-spinner"
+      role={label ? "status" : undefined}
+      aria-label={label}
+      aria-hidden={label ? undefined : true}
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
 export function Button({
   variant = "primary",
   size = "md",
   icon,
   iconRight,
   fullWidth,
+  loading,
+  disabled,
   className = "",
   children,
   ...rest
@@ -31,6 +45,7 @@ export function Button({
   icon?: IconName;
   iconRight?: IconName;
   fullWidth?: boolean;
+  loading?: boolean;
 }) {
   const iconSize = size === "sm" ? 16 : size === "lg" ? 20 : 18;
   const cls = [
@@ -42,11 +57,12 @@ export function Button({
   ]
     .filter(Boolean)
     .join(" ");
+  // Under ventetid skifter ikonet til en spinner, så knappen bevarer sin bredde.
   return (
-    <button type="button" className={cls} {...rest}>
-      {icon && <Icon name={icon} size={iconSize} />}
+    <button type="button" className={cls} disabled={disabled || loading} aria-busy={loading || undefined} {...rest}>
+      {loading ? <Spinner size={iconSize - 2} /> : icon && <Icon name={icon} size={iconSize} />}
       {children}
-      {iconRight && <Icon name={iconRight} size={iconSize} />}
+      {iconRight && !loading && <Icon name={iconRight} size={iconSize} />}
     </button>
   );
 }
@@ -302,6 +318,7 @@ export function Dialog({
   children,
   actions,
   onClose,
+  leaving,
 }: {
   open: boolean;
   eyebrow?: string;
@@ -309,10 +326,11 @@ export function Dialog({
   children?: ReactNode;
   actions?: ReactNode;
   onClose?: () => void;
+  leaving?: boolean;
 }) {
   if (!open) return null;
   return (
-    <div className="pc-dialog__scrim" onClick={onClose}>
+    <div className={`pc-dialog__scrim${leaving ? " is-leaving" : ""}`} onClick={leaving ? undefined : onClose}>
       <div className="pc-dialog" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         {eyebrow && <div className="pc-dialog__eyebrow">{eyebrow}</div>}
         {title && <h2 className="pc-dialog__title">{title}</h2>}
@@ -327,13 +345,15 @@ export function Toast({
   message,
   tone = "default",
   icon,
+  leaving,
 }: {
   message: string;
   tone?: "default" | "danger";
   icon?: IconName;
+  leaving?: boolean;
 }) {
   return (
-    <div className={`pc-toast pc-toast--${tone}`} role="status">
+    <div className={`pc-toast pc-toast--${tone}${leaving ? " is-leaving" : ""}`} role="status">
       <Icon name={icon ?? (tone === "danger" ? "alert-triangle" : "check")} size={18} />
       <span>{message}</span>
     </div>
@@ -446,7 +466,11 @@ export function Header({
       <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           {eyebrow && (
-            <div className="pc-eyebrow" style={{ color: "var(--gold-500)", fontWeight: 600 }}>
+            <div
+              key={typeof eyebrow === "string" ? eyebrow : undefined}
+              className="pc-eyebrow pc-fade-in"
+              style={{ color: "var(--gold-500)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            >
               {eyebrow}
             </div>
           )}
@@ -459,7 +483,10 @@ export function Header({
               whiteSpace: "nowrap",
             }}
           >
-            {title}
+            {/* Ny titel toner ind, når man skifter fane eller pub. */}
+            <span key={typeof title === "string" ? title : undefined} className="pc-fade-in">
+              {title}
+            </span>
           </h1>
         </div>
         {right}

@@ -96,7 +96,12 @@ function AtPub({
             </p>
             <p
               className="mt-2 font-serif tabular-nums leading-none"
-              style={{ fontSize: 60, color: overtime ? "var(--oxblood-700)" : "var(--green-800)" }}
+              style={{
+                fontSize: 60,
+                color: overtime ? "var(--oxblood-700)" : "var(--green-800)",
+                transition: "color var(--dur-base) var(--ease)",
+              }}
+              aria-label={overtime ? "Tiden er gået" : `${formatClock(remaining)} tilbage`}
             >
               {formatClock(remaining)}
             </p>
@@ -128,7 +133,7 @@ function AtPub({
       </Card>
 
       {crawl.challenge && (
-        <Card variant="inverse" className="pc-on-dark flex flex-col gap-3">
+        <Card key={crawl.challenge} variant="inverse" className="pc-on-dark pc-enter flex flex-col gap-3">
           <p className="pc-eyebrow" style={{ color: "var(--gold-500)" }}>
             Udfordring
           </p>
@@ -212,6 +217,8 @@ function Drinks({
   actions: CrawlActions;
 }) {
   const [flash, setFlash] = useState<DrinkKind | null>(null);
+  const [floats, setFloats] = useState<{ id: number; kind: DrinkKind }[]>([]);
+  const floatId = useRef(0);
   const mine = drinks.filter((d) => d.user_id === userId);
   const units = mine.reduce((sum, d) => sum + Number(d.units), 0);
   const water = mine.filter((d) => d.kind === "water").length;
@@ -220,10 +227,13 @@ function Drinks({
 
   async function add(kind: DrinkKind) {
     setFlash(kind);
+    const id = ++floatId.current;
+    setFloats((list) => [...list, { id, kind }]);
     try {
       navigator.vibrate?.(30);
     } catch {}
     setTimeout(() => setFlash((f) => (f === kind ? null : f)), 500);
+    setTimeout(() => setFloats((list) => list.filter((f) => f.id !== id)), 750);
     await actions.addDrink(kind);
   }
 
@@ -240,7 +250,7 @@ function Drinks({
               key={d.kind}
               type="button"
               onClick={() => void add(d.kind)}
-              className="flex min-h-16 items-center gap-3 rounded-[var(--radius-md)] border px-3.5 text-left transition-[background,transform] duration-150 active:translate-y-px"
+              className="relative flex min-h-16 items-center gap-3 rounded-[var(--radius-md)] border px-3.5 text-left transition-[background,color,border-color,transform] duration-150 active:translate-y-px"
               style={{
                 background: flash === d.kind ? "var(--green-800)" : "var(--surface-card)",
                 color: flash === d.kind ? "var(--cream-100)" : "var(--text-body)",
@@ -256,6 +266,13 @@ function Drinks({
                   {d.units > 0 && ` · ${formatUnits(d.units)} gst.`}
                 </span>
               </span>
+              {floats
+                .filter((f) => f.kind === d.kind)
+                .map((f) => (
+                  <span key={f.id} className="pc-float pc-badge pc-badge--gold" aria-hidden>
+                    {d.units > 0 ? `+${formatUnits(d.units)}` : "Skål"}
+                  </span>
+                ))}
             </button>
           ))}
         </div>
@@ -317,7 +334,9 @@ function Drinks({
 function Figure({ value, label }: { value: string; label: string }) {
   return (
     <Card padding="14px 12px" className="text-center">
-      <p className="font-serif text-[34px] leading-none tabular-nums text-green-800">{value}</p>
+      <p key={value} className="pc-pop font-serif text-[34px] leading-none tabular-nums text-green-800">
+        {value}
+      </p>
       <p className="pc-label mt-2 text-muted">{label}</p>
     </Card>
   );

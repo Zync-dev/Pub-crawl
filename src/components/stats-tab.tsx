@@ -45,7 +45,11 @@ export function StatsTab({
           {people.map((p, i) => {
             const me = p.member.user_id === userId;
             return (
-              <li key={p.member.user_id}>
+              <li
+                key={p.member.user_id}
+                className="pc-enter"
+                style={{ animationDelay: `${Math.min(i, 6) * 40}ms` }}
+              >
                 <Card padding="12px 14px" variant={i === 0 && p.units > 0 ? "framed" : "plain"}>
                   <div className="flex items-center gap-3">
                     <span className="w-5 text-center font-serif text-[20px] text-muted">{i + 1}</span>
@@ -61,14 +65,20 @@ export function StatsTab({
                       </span>
                     </span>
                     <span className="text-right">
-                      <span className="block font-serif text-[28px] leading-none tabular-nums text-green-800">
+                      <span
+                        key={p.units}
+                        className="pc-pop block font-serif text-[28px] leading-none tabular-nums text-green-800"
+                      >
                         {formatUnits(p.units)}
                       </span>
                       <span className="pc-label text-muted">Gst.</span>
                     </span>
                   </div>
                   <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-cream-300">
-                    <div className="h-full rounded-full bg-gold-500" style={{ width: `${(p.units / top) * 100}%` }} />
+                    <div
+                      className="pc-grow h-full rounded-full bg-gold-500 transition-[width] duration-500"
+                      style={{ width: `${(p.units / top) * 100}%` }}
+                    />
                   </div>
                   {Object.keys(p.byKind).length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted">
@@ -106,7 +116,10 @@ export function StatsTab({
                   {DRINK_BY_KIND[kind].label}
                 </span>
                 <span className="h-5 flex-1 overflow-hidden rounded-[var(--radius-xs)] bg-cream-300">
-                  <span className="block h-full bg-green-800" style={{ width: `${(count / topKind) * 100}%` }} />
+                  <span
+                    className="pc-grow block h-full bg-green-800 transition-[width] duration-500"
+                    style={{ width: `${(count / topKind) * 100}%` }}
+                  />
                 </span>
                 <span className="w-7 text-right font-serif text-[18px] tabular-nums">{count}</span>
               </div>
@@ -122,7 +135,10 @@ export function StatsTab({
               <div key={stop.id} className="flex items-center gap-3">
                 <span className="w-28 shrink-0 truncate text-sm font-semibold">{stop.name}</span>
                 <span className="h-5 flex-1 overflow-hidden rounded-[var(--radius-xs)] bg-cream-300">
-                  <span className="block h-full bg-gold-500" style={{ width: `${(count / topStop) * 100}%` }} />
+                  <span
+                    className="pc-grow block h-full bg-gold-500 transition-[width] duration-500"
+                    style={{ width: `${(count / topStop) * 100}%` }}
+                  />
                 </span>
                 <span className="w-16 text-right text-[13px] tabular-nums text-muted">
                   {count} · {formatUnits(units)} gst.
