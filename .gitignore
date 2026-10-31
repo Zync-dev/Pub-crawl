@@ -1,0 +1,33 @@
+# Afhængigheder
+node_modules/
+.pnpm-store/
+
+# Build
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# Miljøvariabler
+.env
+.env*.local
+
+# Vercel og Supabase
+.vercel/
+supabase/.temp/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Test
+coverage/
+
+# OS og editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
