@@ -194,6 +194,7 @@ export function RecapView({ initial, userId }: { initial: Crawl; userId: string 
           photos={sortedPhotos(reviews.photos)}
           startIndex={viewer}
           stopName={stopName}
+          members={data.members}
           onClose={() => setViewer(null)}
         />
       )}
