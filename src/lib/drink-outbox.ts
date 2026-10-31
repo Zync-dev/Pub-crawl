@@ -83,6 +83,15 @@ export function addSettled(list: Settled[], id: string, drink: Drink | null, unt
   return [...list.filter((s) => s.id !== id), { id, drink, until }];
 }
 
+// Står der en sletning af den samme drink længere nede i køen, er drinken fortrudt. Så skal indsættelsen
+// ikke sendes (igen), for så dukker drinken op hos hele holdet, til sletningen når frem. Sletningen sendes
+// stadig, og den er ufarlig, hvis drinken aldrig nåede serveren.
+export function undoneLater(queue: OutboxEntry[], index: number) {
+  const entry = queue[index];
+  if (entry?.op !== "insert") return false;
+  return queue.some((e, i) => i > index && e.op === "delete" && e.id === entry.drink.id);
+}
+
 export function pruneSettled(list: Settled[], now: number): Settled[] {
   return list.filter((s) => s.until > now);
 }

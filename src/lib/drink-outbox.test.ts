@@ -10,6 +10,7 @@ import {
   pruneSettled,
   queueRemoval,
   retryable,
+  undoneLater,
   validEntry,
   waitingCount,
   waitingDrinkIds,
@@ -141,6 +142,25 @@ describe("queueRemoval", () => {
   it("sletter ikke to gange", () => {
     expect(queueRemoval([del("a")], "a", null)).toBeNull();
     expect(queueRemoval([insert(a), del("a")], "a", "insert:a")).toBeNull();
+  });
+});
+
+describe("undoneLater", () => {
+  const x = drink("x", "2026-11-06T21:00:00Z");
+  const y = drink("y", "2026-11-06T21:01:00Z");
+
+  it("springer en indsættelse over, når drinken er fortrudt længere nede i køen", () => {
+    // Fortryd, mens den var på vej op, og så intet svar: [indsæt x (sendt), slet x].
+    const queue: OutboxEntry[] = [insert(x, { sent: true }), { op: "delete", id: "x" }];
+    expect(undoneLater(queue, 0)).toBe(true);
+    // Sletningen selv sendes stadig.
+    expect(undoneLater(queue, 1)).toBe(false);
+  });
+
+  it("sender andre drinks og sletninger før indsættelsen som normalt", () => {
+    expect(undoneLater([insert(x), insert(y), { op: "delete", id: "y" }], 0)).toBe(false);
+    expect(undoneLater([{ op: "delete", id: "x" }, insert(x)], 1)).toBe(false);
+    expect(undoneLater([], 0)).toBe(false);
   });
 });
 

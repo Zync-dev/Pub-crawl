@@ -11,15 +11,26 @@ type InstallPromptEvent = Event & {
 
 export type InstallPlatform = "ios" | "android" | "other";
 
+// Hvilken browser guiden skal tale om. "in-app" er browseren inde i Messenger, Instagram og lignende,
+// hvor appen slet ikke kan lægges på hjemmeskærmen. "ios-other" er Firefox, Edge og Opera på iPhone.
+export type InstallBrowser = "default" | "in-app" | "chrome-ios" | "ios-other" | "samsung";
+
 export type InstallState = {
   // Vi ved det først i browseren. Indtil da viser vi ingenting.
   ready: boolean;
   standalone: boolean;
   platform: InstallPlatform;
+  browser: InstallBrowser;
   canPrompt: boolean;
 };
 
-const SERVER_STATE: InstallState = { ready: false, standalone: false, platform: "other", canPrompt: false };
+const SERVER_STATE: InstallState = {
+  ready: false,
+  standalone: false,
+  platform: "other",
+  browser: "default",
+  canPrompt: false,
+};
 
 let deferred: InstallPromptEvent | null = null;
 let installed = false;
@@ -47,6 +58,19 @@ export function installPlatform(): InstallPlatform {
   if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return "ios";
   if (/Android/.test(ua)) return "android";
   return "other";
+}
+
+const IN_APP = /FBAN|FBAV|FB_IAB|FBIOS|Instagram|Snapchat|\bLine\/|MicroMessenger|LinkedInApp|TikTok|musical_ly|\bGSA\//;
+
+export function installBrowser(): InstallBrowser {
+  if (typeof navigator === "undefined") return "default";
+  const ua = navigator.userAgent;
+  // Androids indlejrede browser skriver "; wv)" i sin user agent.
+  if (IN_APP.test(ua) || (/Android/.test(ua) && /; wv\)/.test(ua))) return "in-app";
+  if (/CriOS/.test(ua)) return "chrome-ios";
+  if (/FxiOS|EdgiOS|OPiOS/.test(ua)) return "ios-other";
+  if (/SamsungBrowser/.test(ua)) return "samsung";
+  return "default";
 }
 
 // Kaldes én gang fra rodlayoutet, så vi fanger Androids beforeinstallprompt, før nogen side har brug for den.
@@ -96,6 +120,7 @@ function getSnapshot(): InstallState {
     ready: true,
     standalone: installed || isStandalone(),
     platform: installPlatform(),
+    browser: installBrowser(),
     canPrompt: deferred !== null,
   };
   return snapshot;
@@ -105,6 +130,7 @@ export function useInstallState() {
   return useSyncExternalStore(subscribe, getSnapshot, () => SERVER_STATE);
 }
 
+// Kun forsidens guide kan lukkes. Ved invitationen og i Holdet > Indstillinger står den altid.
 const DISMISS_KEY = "pc-install-dismissed";
 
 export function installDismissed() {

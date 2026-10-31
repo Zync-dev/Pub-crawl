@@ -129,7 +129,9 @@ export function useUndoableActions({
     },
 
     // wiring: onUndone kaldes, når Videre er fortrudt, så opråbet, Videre startede, også kan lukkes.
-    async leave(onUndone?: () => void) {
+    // pwa-push: onCommitted kaldes, når Videre står fast: Fortryd blev ikke trykket i tide, eller det mislykkedes.
+    // Så får holdet aldrig besked om et Videre, der blev fortrudt.
+    async leave(onUndone?: () => void, onCommitted?: () => void) {
       const before = fieldsOf(crawl);
       const stop = stops.find((s) => s.id === crawl.current_stop_id);
       const forward = withCrawl(NOBODY);
@@ -139,7 +141,20 @@ export function useUndoableActions({
       if (!ok) return false;
       if (!before.current_stop_id) return true;
 
+      let undoing = false;
+      let committed = false;
+      const commit = () => {
+        if (committed) return;
+        committed = true;
+        onCommitted?.();
+      };
+      // Lidt længere end toasten, så et tryk i sidste øjeblik også når at tælle.
+      setTimeout(() => {
+        if (!undoing) commit();
+      }, UNDO_MS + 500);
+
       offerUndo(stop ? `Videre fra ${stop.name}` : "I er videre", async () => {
+        undoing = true;
         const back = show("crawl", withCrawl(before));
         // Kun hvis ingen er tjekket ind et andet sted i mellemtiden.
         const { data, error } = await supabase
@@ -148,7 +163,10 @@ export function useUndoableActions({
           .eq("id", id)
           .is("current_stop_id", null)
           .select("id");
-        if (error || !data?.length) return failed(back, forward, error);
+        if (error || !data?.length) {
+          commit();
+          return failed(back, forward, error);
+        }
         back.release();
         onUndone?.();
         ask.toast(stop ? `Tilbage på ${stop.name}` : "Videre er fortrudt");

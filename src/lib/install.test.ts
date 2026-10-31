@@ -59,6 +59,41 @@ describe("installPlatform", () => {
   });
 });
 
+describe("installBrowser", () => {
+  it("genkender browseren inde i Messenger, Instagram og Googles app", async () => {
+    const { installBrowser } = await load();
+    for (const ua of [
+      `${IPHONE} [FBAN/MessengerForiOS;FBAV/480.0]`,
+      `${IPHONE} Instagram 350.0.0`,
+      `${IPHONE} GSA/350.0.0 Safari/604.1`,
+      "Mozilla/5.0 (Linux; Android 15; Pixel 9; wv) AppleWebKit/537.36 Chrome/130.0 Mobile Safari/537.36",
+    ]) {
+      device(ua, { maxTouchPoints: 5 });
+      expect(installBrowser()).toBe("in-app");
+    }
+  });
+
+  it("skelner Chrome og andre browsere på iPhone fra Safari", async () => {
+    const { installBrowser } = await load();
+    device(`${IPHONE} CriOS/130.0 Safari/604.1`, { maxTouchPoints: 5 });
+    expect(installBrowser()).toBe("chrome-ios");
+    device(`${IPHONE} FxiOS/132.0 Safari/605.1.15`, { maxTouchPoints: 5 });
+    expect(installBrowser()).toBe("ios-other");
+    device(`${IPHONE} Version/26.0 Safari/604.1`, { maxTouchPoints: 5 });
+    expect(installBrowser()).toBe("default");
+  });
+
+  it("genkender Samsung Internet og ser almindelig Chrome som standard", async () => {
+    const { installBrowser } = await load();
+    device(ANDROID.replace("Chrome/130.0.0.0", "SamsungBrowser/27.0 Chrome/125.0.0.0"), { maxTouchPoints: 5 });
+    expect(installBrowser()).toBe("samsung");
+    device(ANDROID, { maxTouchPoints: 5 });
+    expect(installBrowser()).toBe("default");
+    vi.stubGlobal("navigator", undefined);
+    expect(installBrowser()).toBe("default");
+  });
+});
+
 describe("isStandalone", () => {
   it("er installeret, når appen kører som standalone eller fullscreen", async () => {
     const { isStandalone } = await load();

@@ -13,6 +13,7 @@ import type { Crawl, Drink, DrinkKind, LatLng, Member, Stop } from "@/lib/types"
 import { useArranger } from "@/lib/use-arranger"; // arranger
 import { useCrawl, useNow } from "@/lib/use-crawl";
 import { useCrewNotifications, useRollCallNotification } from "@/lib/use-crew-notifications";
+import { usePushNudge } from "./use-push-nudge";
 import { useDrinkOutbox, type DrinkOutbox } from "@/lib/use-drink-outbox";
 import { useHolds } from "@/lib/use-holds";
 import { useLocationSharing } from "@/lib/use-location";
@@ -73,7 +74,7 @@ function useActions(
     // offline-undo: med Fortryd i toasten. Se use-undoable-actions.ts.
     // games: udfordringsrækken og current_challenge_id skrives også dér.
     arrive: (stop: Stop) => undoable.arrive(stop),
-    leave: (onUndone?: () => void) => undoable.leave(onUndone),
+    leave: (onUndone?: () => void, onCommitted?: () => void) => undoable.leave(onUndone, onCommitted),
     async newChallenge() {
       // games: en ny række for hver udfordring. Den gamle beholder sine stemmer.
       const drawn = drawChallenge(members, crawl.challenge);
@@ -227,6 +228,8 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
   const rollCall = useRollCallWithToasts(crawl.id, userId, members, now);
   // pwa-push: "Sidste omgang" til holdet, når timeren løber ud.
   useCrewNotifications(crawl, currentStop, remaining);
+  // pwa-push: spørg én gang, om telefonen skal have beskeder, når holdet er tjekket ind.
+  usePushNudge(crawl.current_stop_id !== null);
   // wiring: "Er alle med?" til holdet, når du starter et opråb.
   useRollCallNotification(crawl, rollCall.call, rollCall.open, rollCall.startedByMe);
 
@@ -403,7 +406,7 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
   return (
     <GamesProvider crawlId={crawl.id} userId={userId} members={members}>
       {/* Omgange: deler omgangene med Nu, Stillingen og Holdet. */}
-      <RoundsProvider crawlId={crawl.id} crawlCode={crawl.code} userId={userId} members={members} stops={stops} currentStopId={crawl.current_stop_id}>
+      <RoundsProvider crawlId={crawl.id} userId={userId} members={members} stops={stops} currentStopId={crawl.current_stop_id}>
         {/* Er alle med? (rollcall) */}
         <RollCallProvider value={rollCall}>{page}</RollCallProvider>
       </RoundsProvider>

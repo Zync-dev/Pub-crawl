@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { installPlatform } from "@/lib/install";
 import { disablePush, enablePush, pushEnabled, pushPermission, pushSupport, type PushSupport } from "@/lib/push";
 import { useAsk } from "./ask";
 import { Card, Switch } from "./ds";
@@ -15,30 +16,40 @@ export function PushSettings() {
 
   useEffect(() => {
     let alive = true;
-    // Browserens push-evner kan først læses efter første render.
-    /* eslint-disable react-hooks/set-state-in-effect */
-    setSupport(pushSupport());
-    setDenied(pushPermission() === "denied");
-    /* eslint-enable react-hooks/set-state-in-effect */
-    void pushEnabled().then((enabled) => {
-      if (alive) setOn(enabled);
-    });
+    // Browserens push-evner kan først læses efter første render. De læses igen, når man kommer tilbage
+    // til appen, fx efter at have slået beskeder til i telefonens indstillinger.
+    const read = () => {
+      setSupport(pushSupport());
+      setDenied(pushPermission() === "denied");
+      void pushEnabled().then((enabled) => {
+        if (alive) setOn(enabled);
+      });
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") read();
+    };
+    read();
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       alive = false;
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 
   function change(next: boolean) {
     setBusy(true);
     // enablePush spørger om lov med det samme, så det stadig tæller som brugerens tryk.
-    const work = next ? enablePush() : disablePush().then((ok) => (ok ? "disabled" : "failed"));
+    const work = next ? enablePush() : disablePush().then((ok) => (ok ? "disabled" : "not-disabled"));
     void work.then((result) => {
       setBusy(false);
       if (result === "enabled") {
         setOn(true);
-        ask.toast("Du får besked, når holdet rykker");
+        ask.toast("Du får besked, når holdet går videre.");
       } else if (result === "disabled") {
         setOn(false);
+      } else if (result === "not-disabled") {
+        // Telefonen får stadig beskeder, så kontakten bliver stående.
+        ask.toast("Beskederne kunne ikke slås fra. Prøv igen.", "danger");
       } else if (result === "denied") {
         setDenied(true);
         setOn(false);
@@ -52,8 +63,12 @@ export function PushSettings() {
     if (support === "needs-install") return "På iPhone virker det først, når appen ligger på hjemmeskærmen.";
     if (support === "unsupported") return "Din browser kan ikke give besked. Prøv Chrome eller Safari.";
     if (support === "unconfigured") return "Beskeder er ikke sat op på serveren endnu.";
-    if (denied) return "Du har sagt nej til beskeder. Slå dem til i telefonens indstillinger.";
-    return "Når tiden er gået, og når holdet går videre. Også når appen er lukket.";
+    if (denied) {
+      return installPlatform() === "ios"
+        ? "Du har sagt nej til beskeder. Slå dem til under Indstillinger > Notifikationer."
+        : "Du har sagt nej til beskeder. Slå dem til under webstedets indstillinger i Chrome.";
+    }
+    return null;
   })();
 
   const usable = support === "supported" && !denied;
@@ -66,7 +81,15 @@ export function PushSettings() {
         disabled={!usable || busy}
         label="Giv besked på telefonen"
       />
-      <p className={`text-[13px] ${usable || support === null ? "text-muted" : "text-oxblood-500"}`}>{note}</p>
+      {note ? (
+        <p className="text-[13px] text-oxblood-500">{note}</p>
+      ) : (
+        // "Sidste omgang" sendes af en åben telefon på holdet, så det løfter vi ikke for lukkede apps.
+        <p className="text-[13px] text-muted">
+          Ved Videre og ved Er alle med?, også når appen er lukket. Sidste omgang kommer, når en af jer har appen
+          åben.
+        </p>
+      )}
     </Card>
   );
 }
