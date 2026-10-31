@@ -1,16 +1,16 @@
-export const MEMBER_COLORS = [
-  "#f5b83d",
-  "#5ec8f2",
-  "#f2709c",
-  "#7ee08a",
-  "#b48cf2",
-  "#f2894b",
-  "#4fd6c3",
-  "#f2e14b",
-  "#8ca8f2",
-  "#e05e5e",
-];
+import type { AvatarTone } from "@/components/ds";
 
-export function memberColor(index: number) {
-  return MEMBER_COLORS[((index % 10) + 10) % 10];
+// Designsystemet har fire avatar-toner. Deltagerne får dem på skift.
+const TONES: AvatarTone[] = ["green", "gold", "oxblood", "cream"];
+
+export function memberTone(index: number): AvatarTone {
+  return TONES[((index % 4) + 4) % 4];
 }
+
+// Farverne bag hver tone, til markører på kortet.
+export const TONE_STYLE: Record<AvatarTone, { bg: string; fg: string }> = {
+  green: { bg: "var(--green-800)", fg: "var(--gold-300)" },
+  gold: { bg: "var(--gold-500)", fg: "var(--green-900)" },
+  oxblood: { bg: "var(--oxblood-700)", fg: "var(--cream-100)" },
+  cream: { bg: "var(--cream-300)", fg: "var(--green-900)" },
+};

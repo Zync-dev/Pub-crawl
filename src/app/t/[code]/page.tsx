@@ -12,5 +12,9 @@ export default function Page({ params }: PageProps<"/t/[code]">) {
 }
 
 function Loading() {
-  return <p className="m-auto text-muted">Henter turen…</p>;
+  return (
+    <main className="flex min-h-dvh flex-1 items-center justify-center bg-green-800">
+      <p className="pc-eyebrow text-gold-300">Henter turen</p>
+    </main>
+  );
 }

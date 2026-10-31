@@ -2,15 +2,17 @@
 
 import dynamic from "next/dynamic";
 import { useRef, useState, type FormEvent } from "react";
-import { DEFAULT_CENTER, distanceMeters, formatDistance } from "@/lib/geo";
+import { DEFAULT_CENTER, distanceMeters, formatDistance, walkingMinutes } from "@/lib/geo";
 import { nearbyBars, searchPlaces } from "@/lib/places";
+import { formatTime } from "@/lib/timer";
 import type { LatLng, Member, NearbyPlace, Stop } from "@/lib/types";
+import { useAsk } from "./ask";
 import type { CrawlActions } from "./crawl-app";
-import { Button, Input } from "./ui";
+import { Button, Card, IconButton, Input, SectionTitle, StopCard } from "./ds";
 
 const MapView = dynamic(() => import("./map-view"), {
   ssr: false,
-  loading: () => <div className="flex h-full items-center justify-center text-muted">Henter kort…</div>,
+  loading: () => <div className="pc-eyebrow flex h-full items-center justify-center text-muted">Henter kortet</div>,
 });
 
 export function MapTab({
@@ -30,6 +32,7 @@ export function MapTab({
   now: number;
   actions: CrawlActions;
 }) {
+  const ask = useAsk();
   const center = useRef<LatLng>(DEFAULT_CENTER);
   const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
@@ -47,20 +50,29 @@ export function MapTab({
     await actions.addStop(name, at);
     setNearby((list) => list.filter((p) => p.lat !== at.lat || p.lng !== at.lng));
     setResults(null);
-    setMessage(`${name} er lagt på ruten.`);
   }
 
-  function onMapClick(at: LatLng) {
+  async function onMapClick(at: LatLng) {
     if (!adding) return;
-    const name = window.prompt("Hvad hedder pubben?");
-    if (name?.trim()) {
-      void add(name, at);
-      setAdding(false);
-    }
+    setAdding(false);
+    const name = await ask.prompt({
+      eyebrow: "Ny pub",
+      title: "Hvad hedder den?",
+      label: "Pubbens navn",
+      placeholder: "Fx Charlie's Bar",
+      confirm: "Læg på ruten",
+    });
+    if (name) await add(name, at);
   }
 
-  function onPickNearby(place: NearbyPlace) {
-    if (window.confirm(`Læg ${place.name} på ruten?`)) void add(place.name, place);
+  async function onPickNearby(place: NearbyPlace) {
+    const ok = await ask.confirm({
+      eyebrow: "Fundet på kortet",
+      title: place.name,
+      body: "Skal den med på aftenens rute?",
+      confirm: "Læg på ruten",
+    });
+    if (ok) await add(place.name, place);
   }
 
   async function findNearby() {
@@ -73,8 +85,8 @@ export function MapTab({
       setNearby(fresh);
       setMessage(
         fresh.length
-          ? `${fresh.length} pubs og barer i nærheden. Tryk på en blå prik for at lægge den på ruten.`
-          : "Fandt ingen pubs her. Prøv at flytte kortet.",
+          ? `${fresh.length} pubs og barer her. Tryk på en rød prik for at lægge den på ruten.`
+          : "Ingen pubs her. Flyt kortet og prøv igen.",
       );
     } catch {
       setMessage("Kunne ikke hente pubs lige nu. Prøv igen om lidt.");
@@ -101,7 +113,7 @@ export function MapTab({
 
   return (
     <div className="flex flex-col">
-      <div className="relative h-[52dvh] min-h-72">
+      <div className="relative h-[46dvh] min-h-72" style={{ borderBottom: "var(--rule-double)" }}>
         <MapView
           stops={stops}
           members={members}
@@ -112,45 +124,49 @@ export function MapTab({
           adding={adding}
           focus={focus}
           now={now}
-          onMapClick={onMapClick}
-          onPickNearby={onPickNearby}
+          onMapClick={(at) => void onMapClick(at)}
+          onPickNearby={(p) => void onPickNearby(p)}
           onCenterChange={(at) => (center.current = at)}
         />
-        <div className="pointer-events-none absolute inset-x-3 bottom-3 z-[1000] flex justify-between gap-2">
+        {adding && (
+          <div className="pointer-events-none absolute inset-x-0 top-3 z-[1000] flex justify-center">
+            <span className="pc-badge pc-badge--green">Tryk der, hvor pubben ligger</span>
+          </div>
+        )}
+        <div className="pointer-events-none absolute inset-x-3 bottom-3 z-[1000] flex items-end justify-between gap-2">
           <div className="pointer-events-auto flex gap-2">
             <Button
-              variant={adding ? "primary" : "secondary"}
-              className="shadow-lg"
+              variant={adding ? "gold" : "primary"}
+              size="sm"
+              icon={adding ? "x" : "plus"}
               onClick={() => setAdding((a) => !a)}
             >
-              {adding ? "Tryk på kortet…" : "＋ Pub"}
+              {adding ? "Fortryd" : "Sæt en pub"}
             </Button>
-            <Button variant="secondary" className="shadow-lg" disabled={busy} onClick={() => void findNearby()}>
-              🔎 Pubs her
+            <Button variant="primary" size="sm" icon="search" disabled={busy} onClick={() => void findNearby()}>
+              Pubs her
             </Button>
           </div>
           {myPosition && (
-            <Button
-              variant="secondary"
-              className="pointer-events-auto shadow-lg"
-              onClick={() => focusOn(myPosition)}
-              aria-label="Vis mig på kortet"
-            >
-              ◎
-            </Button>
+            <div className="pointer-events-auto">
+              <IconButton icon="locate-fixed" label="Vis mig på kortet" variant="primary" onClick={() => focusOn(myPosition)} />
+            </div>
           )}
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 p-4">
-        <form onSubmit={search} className="flex gap-2">
+      <div className="flex flex-col gap-4 px-4 py-[18px]">
+        <form onSubmit={search} className="flex items-end gap-2">
           <Input
+            className="flex-1"
+            label="Find en pub"
+            icon="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Søg efter en pub eller adresse"
+            placeholder="Navn eller adresse"
             enterKeyHint="search"
           />
-          <Button type="submit" variant="secondary" disabled={busy}>
+          <Button type="submit" variant="secondary" disabled={busy} style={{ height: 48 }}>
             Søg
           </Button>
         </form>
@@ -158,29 +174,32 @@ export function MapTab({
         {message && <p className="text-sm text-muted">{message}</p>}
 
         {results && results.length > 0 && (
-          <ul className="flex flex-col gap-1 rounded-xl border border-line bg-surface p-1">
-            {results.map((r) => (
-              <li key={r.id} className="flex items-center gap-2 px-2 py-1">
-                <button className="min-w-0 flex-1 text-left" onClick={() => focusOn(r)}>
-                  <span className="block truncate">{r.name}</span>
-                  <span className="text-xs text-muted">{r.kind}</span>
-                </button>
-                <Button variant="secondary" className="min-h-9 px-3 text-sm" onClick={() => void add(r.name, r)}>
-                  Tilføj
-                </Button>
-              </li>
-            ))}
-            <li>
-              <Button variant="ghost" className="w-full text-sm" onClick={() => setResults(null)}>
+          <Card padding="4px 0">
+            <ul className="divide-y divide-line">
+              {results.map((r) => (
+                <li key={r.id} className="flex items-center gap-3 px-4 py-2">
+                  <button type="button" className="min-w-0 flex-1 text-left" onClick={() => focusOn(r)}>
+                    <span className="block truncate font-semibold">{r.name}</span>
+                    <span className="pc-label text-muted">{r.kind}</span>
+                  </button>
+                  <Button variant="secondary" size="sm" icon="plus" onClick={() => void add(r.name, r)}>
+                    Tilføj
+                  </Button>
+                </li>
+              ))}
+            </ul>
+            <div className="px-2 pb-1">
+              <Button variant="ghost" size="sm" fullWidth onClick={() => setResults(null)}>
                 Luk
               </Button>
-            </li>
-          </ul>
+            </div>
+          </Card>
         )}
 
         <RouteList
           stops={stops}
           currentStopId={currentStopId}
+          myPosition={myPosition}
           actions={actions}
           onFocus={focusOn}
         />
@@ -192,111 +211,135 @@ export function MapTab({
 function RouteList({
   stops,
   currentStopId,
+  myPosition,
   actions,
   onFocus,
 }: {
   stops: Stop[];
   currentStopId: string | null;
+  myPosition: LatLng | null;
   actions: CrawlActions;
   onFocus: (at: LatLng) => void;
 }) {
+  const ask = useAsk();
   const [editing, setEditing] = useState(false);
 
   if (!stops.length) {
     return (
-      <div className="rounded-2xl border border-dashed border-line p-5 text-center text-sm text-muted">
-        Ruten er tom. Tryk på <strong className="text-ink">🔎 Pubs her</strong> for at finde pubs
-        omkring kortet, eller <strong className="text-ink">＋ Pub</strong> for at sætte en selv.
-      </div>
+      <Card variant="framed" className="text-center">
+        <p className="pc-label mb-2 text-oxblood-700">Ruten er tom</p>
+        <p className="text-muted">
+          Tryk på <strong>Pubs her</strong> for at finde pubs omkring kortet, eller <strong>Sæt en pub</strong> for
+          at sætte en selv.
+        </p>
+      </Card>
     );
   }
 
-  const totalMeters = stops.slice(1).reduce((sum, s, i) => sum + distanceMeters(stops[i], s), 0);
+  const nextId = currentStopId ? null : stops.find((s) => !s.visited_at)?.id;
 
   return (
     <section>
-      <div className="mb-2 flex items-baseline justify-between">
-        <h2 className="font-semibold">
-          Ruten <span className="text-sm font-normal text-muted">· {stops.length} pubs, {formatDistance(totalMeters)}</span>
-        </h2>
-        <Button variant="ghost" className="min-h-9 px-2 text-sm" onClick={() => setEditing((e) => !e)}>
-          {editing ? "Færdig" : "Ret"}
-        </Button>
-      </div>
-      <ol className="flex flex-col gap-2">
+      <SectionTitle
+        eyebrow={editing ? "Ret ruten" : "Tryk for at se på kortet"}
+        title="Pubberne"
+        right={
+          <Button variant="ghost" size="sm" icon={editing ? "check" : "pencil"} onClick={() => setEditing((e) => !e)}>
+            {editing ? "Færdig" : "Ret"}
+          </Button>
+        }
+      />
+      <ol className="flex flex-col gap-2.5">
         {stops.map((stop, i) => {
           const current = stop.id === currentStopId;
+          const status = current ? "current" : stop.visited_at ? "done" : "upcoming";
+          const fromPrev = i > 0 ? distanceMeters(stops[i - 1], stop) : null;
+          const fromMe = stop.id === nextId && myPosition ? distanceMeters(myPosition, stop) : null;
+          const note = [
+            `${stop.minutes} min.`,
+            fromMe !== null
+              ? `${formatDistance(fromMe)} fra dig, ca. ${walkingMinutes(fromMe)} min.`
+              : fromPrev !== null
+                ? `${formatDistance(fromPrev)} fra forrige`
+                : null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
           return (
-            <li
-              key={stop.id}
-              className={`rounded-xl border p-3 ${
-                current ? "border-gold bg-gold/10" : "border-line bg-surface"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <span
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
-                    current
-                      ? "bg-gold text-gold-ink"
-                      : stop.visited_at
-                        ? "bg-line text-muted"
-                        : "bg-ink text-night"
-                  }`}
-                >
-                  {stop.visited_at && !current ? "✓" : i + 1}
-                </span>
-                <button className="min-w-0 flex-1 text-left" onClick={() => onFocus(stop)}>
-                  <span className={`block truncate ${stop.visited_at && !current ? "text-muted line-through" : ""}`}>
-                    {stop.name}
-                  </span>
-                  <span className="text-xs text-muted">
-                    {stop.minutes} min.
-                    {i > 0 && ` · ${formatDistance(distanceMeters(stops[i - 1], stop))} fra forrige`}
-                  </span>
-                </button>
-                {!editing && !current && (
-                  <Button variant="secondary" className="min-h-9 px-3 text-sm" onClick={() => void actions.arrive(stop)}>
-                    Vi er her
-                  </Button>
-                )}
-              </div>
-              {editing && (
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Button variant="secondary" className="min-h-9 px-3" disabled={i === 0} onClick={() => void actions.moveStop(stop, -1)} aria-label="Flyt op">
-                    ↑
-                  </Button>
-                  <Button variant="secondary" className="min-h-9 px-3" disabled={i === stops.length - 1} onClick={() => void actions.moveStop(stop, 1)} aria-label="Flyt ned">
-                    ↓
-                  </Button>
-                  <div className="flex items-center gap-1 rounded-xl border border-line px-1">
-                    <button className="h-9 w-8 text-lg" onClick={() => void actions.setMinutes(stop, stop.minutes - 5)} aria-label="5 minutter mindre">−</button>
-                    <span className="w-14 text-center text-sm tabular-nums">{stop.minutes} min.</span>
-                    <button className="h-9 w-8 text-lg" onClick={() => void actions.setMinutes(stop, stop.minutes + 5)} aria-label="5 minutter mere">+</button>
-                  </div>
+            <li key={stop.id} className="flex flex-col gap-2">
+              <StopCard
+                number={i + 1}
+                total={stops.length}
+                name={stop.name}
+                time={stop.visited_at && !current ? formatTime(stop.visited_at) : undefined}
+                note={note}
+                status={status}
+                onClick={() => onFocus(stop)}
+              >
+                {!editing && stop.id === nextId && (
                   <Button
-                    variant="secondary"
-                    className="min-h-9 px-3 text-sm"
-                    onClick={() => {
-                      const name = window.prompt("Nyt navn", stop.name);
-                      if (name?.trim()) void actions.renameStop(stop, name);
+                    variant="gold"
+                    size="sm"
+                    icon="stamp"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void actions.arrive(stop);
                     }}
                   >
-                    Omdøb
+                    Tjek ind
                   </Button>
+                )}
+              </StopCard>
+              {editing && (
+                <div className="flex flex-wrap items-center gap-2 pl-2">
+                  <IconButton icon="arrow-up" label="Flyt op" variant="secondary" size="sm" disabled={i === 0} onClick={() => void actions.moveStop(stop, -1)} />
+                  <IconButton icon="arrow-down" label="Flyt ned" variant="secondary" size="sm" disabled={i === stops.length - 1} onClick={() => void actions.moveStop(stop, 1)} />
+                  <div className="flex h-[34px] items-center rounded-[var(--radius-sm)] border-[1.5px] border-green-800 px-1 text-green-800">
+                    <button type="button" className="h-full w-7 font-semibold" onClick={() => void actions.setMinutes(stop, stop.minutes - 5)} aria-label="5 minutter mindre">
+                      −
+                    </button>
+                    <span className="w-14 text-center text-[13px] font-semibold tabular-nums">{stop.minutes} min.</span>
+                    <button type="button" className="h-full w-7 font-semibold" onClick={() => void actions.setMinutes(stop, stop.minutes + 5)} aria-label="5 minutter mere">
+                      +
+                    </button>
+                  </div>
+                  <IconButton
+                    icon="pencil"
+                    label="Omdøb"
+                    variant="secondary"
+                    size="sm"
+                    onClick={async () => {
+                      const name = await ask.prompt({
+                        eyebrow: `Pub ${i + 1}`,
+                        title: "Nyt navn",
+                        label: "Pubbens navn",
+                        initial: stop.name,
+                        confirm: "Gem",
+                      });
+                      if (name) await actions.renameStop(stop, name);
+                    }}
+                  />
                   {stop.visited_at && !current && (
-                    <Button variant="secondary" className="min-h-9 px-3 text-sm" onClick={() => void actions.setVisited(stop, false)}>
+                    <Button variant="ghost" size="sm" icon="undo-2" onClick={() => void actions.setVisited(stop, false)}>
                       Ikke besøgt
                     </Button>
                   )}
-                  <Button
+                  <IconButton
+                    icon="trash-2"
+                    label="Fjern fra ruten"
                     variant="danger"
-                    className="min-h-9 px-3 text-sm"
-                    onClick={() => {
-                      if (window.confirm(`Fjern ${stop.name} fra ruten?`)) void actions.deleteStop(stop);
+                    size="sm"
+                    onClick={async () => {
+                      const ok = await ask.confirm({
+                        eyebrow: "Fjern pub",
+                        title: `${stop.name} ryger af ruten?`,
+                        body: "Drinks fra pubben bliver i statistikken.",
+                        confirm: "Fjern den",
+                        danger: true,
+                      });
+                      if (ok) await actions.deleteStop(stop);
                     }}
-                  >
-                    Fjern
-                  </Button>
+                  />
                 </div>
               )}
             </li>

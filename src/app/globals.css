@@ -1,25 +1,45 @@
 @import "tailwindcss";
+@import "../design/pub-crawl.css";
 
-@theme {
-  --color-night: #0b1020;
-  --color-surface: #141a2e;
-  --color-raised: #1d2540;
-  --color-line: #2a3354;
-  --color-ink: #f4f1ea;
-  --color-muted: #9aa3c0;
-  --color-gold: #f5b83d;
-  --color-gold-ink: #241a03;
-  --color-sky: #5ec8f2;
-  --color-danger: #f26b6b;
-  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+/* Designsystemets farver som Tailwind-klasser (bg-green-800, text-gold-500 osv.). */
+@theme inline {
+  --color-green-950: var(--green-950);
+  --color-green-900: var(--green-900);
+  --color-green-800: var(--green-800);
+  --color-green-700: var(--green-700);
+  --color-green-500: var(--green-500);
+  --color-green-300: var(--green-300);
+  --color-gold-700: var(--gold-700);
+  --color-gold-500: var(--gold-500);
+  --color-gold-400: var(--gold-400);
+  --color-gold-300: var(--gold-300);
+  --color-oxblood-700: var(--oxblood-700);
+  --color-oxblood-500: var(--oxblood-500);
+  --color-oxblood-300: var(--oxblood-300);
+  --color-amber-500: var(--amber-500);
+  --color-cream-50: var(--cream-50);
+  --color-cream-100: var(--cream-100);
+  --color-cream-200: var(--cream-200);
+  --color-cream-300: var(--cream-300);
+  --color-cream-400: var(--cream-400);
+  --color-ink: var(--ink);
+  --color-body: var(--text-body);
+  --color-muted: var(--text-muted);
+  --color-line: var(--border-subtle);
+  --color-line-strong: var(--border-strong);
+  /* Ikke --font-display: det navn ejer designsystemet. */
+  --font-serif: var(--font-dm-serif), "DM Serif Display", Georgia, serif;
+  --font-sans: var(--font-franklin), "Libre Franklin", "Helvetica Neue", Arial, sans-serif;
 }
 
 html,
 body {
   height: 100%;
-  background: var(--color-night);
-  color: var(--color-ink);
+  background: var(--surface-page);
+  color: var(--text-body);
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -31,39 +51,79 @@ button {
   cursor: pointer;
 }
 
-button:disabled {
-  cursor: default;
+/* Tilpasninger af designsystemet til en rigtig telefon. */
+.pc-dialog__scrim {
+  position: fixed;
+  z-index: 2000;
 }
 
-/* Leaflet i mørkt tema */
+.pc-tabbar {
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+}
+
+.pc-eyebrow {
+  font: 700 var(--fs-eyebrow) / 1 var(--font-body);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+}
+
+.pc-label {
+  font: 700 var(--fs-eyebrow) / 1 var(--font-body);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.pc-stop__num,
+.pc-stop__name,
+.pc-avatar {
+  font-variant-numeric: lining-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pc-dialog,
+  .pc-dialog__scrim,
+  .pc-toast {
+    animation: none;
+  }
+}
+
+/* Leaflet i pubskiltets farver */
 .leaflet-container {
-  background: #0e1426;
-  font-family: var(--font-sans);
+  background: var(--cream-300);
+  font-family: var(--font-body);
+}
+
+.leaflet-tile-pane {
+  filter: sepia(0.28) saturate(0.85) brightness(0.98);
 }
 
 .leaflet-control-attribution {
-  background: rgb(11 16 32 / 0.75) !important;
-  color: var(--color-muted) !important;
+  background: rgb(251 245 230 / 0.85) !important;
+  color: var(--text-muted) !important;
   font-size: 10px;
 }
 
 .leaflet-control-attribution a {
-  color: var(--color-ink) !important;
+  color: var(--green-800) !important;
 }
 
-.leaflet-bar a {
-  background: var(--color-surface) !important;
-  color: var(--color-ink) !important;
-  border-color: var(--color-line) !important;
+.leaflet-popup-content-wrapper {
+  background: var(--surface-card);
+  color: var(--text-body);
+  border: var(--rule-double);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-raised);
 }
 
-.leaflet-popup-content-wrapper,
+.leaflet-popup-content {
+  font: 14px / 1.4 var(--font-body);
+}
+
 .leaflet-popup-tip {
-  background: var(--color-surface);
-  color: var(--color-ink);
+  background: var(--gold-500);
 }
 
-.pc-marker {
+.map-marker {
   background: none;
   border: none;
 }

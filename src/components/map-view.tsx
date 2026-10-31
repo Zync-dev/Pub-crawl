@@ -12,7 +12,7 @@ import {
   useMap,
   useMapEvents,
 } from "react-leaflet";
-import { memberColor } from "@/lib/colors";
+import { memberTone, TONE_STYLE } from "@/lib/colors";
 import { DEFAULT_CENTER, formatAgo } from "@/lib/geo";
 import type { LatLng, Member, NearbyPlace, Stop } from "@/lib/types";
 
@@ -38,47 +38,50 @@ function escapeHtml(text: string) {
 }
 
 function stopIcon(index: number, state: "current" | "visited" | "next" | "later") {
+  // Samme cirkler som numrene i designsystemets StopCard.
   const styles = {
-    current: "background:#f5b83d;color:#241a03;box-shadow:0 0 0 6px rgb(245 184 61 / .3)",
-    next: "background:#f4f1ea;color:#0b1020",
-    visited: "background:#2a3354;color:#9aa3c0",
-    later: "background:#1d2540;color:#f4f1ea;border:2px solid #f4f1ea",
+    current:
+      "background:var(--gold-500);color:var(--green-900);border:2px solid var(--green-800);box-shadow:0 0 0 4px rgb(201 162 74 / .35)",
+    next: "background:var(--green-800);color:var(--gold-300);border:2px solid var(--gold-500)",
+    visited: "background:var(--cream-300);color:var(--slate-600);border:1.5px solid var(--border-strong)",
+    later: "background:var(--cream-100);color:var(--green-800);border:1.5px solid var(--green-800)",
   }[state];
+  const label = state === "visited" ? "&#10003;" : String(index + 1);
   return L.divIcon({
-    className: "pc-marker",
-    html: `<div style="width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:600 14px var(--font-sans);${styles}">${index + 1}</div>`,
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
+    className: "map-marker",
+    html: `<div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:17px/1 var(--font-display);box-shadow:var(--shadow-card);${styles}">${label}</div>`,
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
   });
 }
 
 function memberIcon(member: Member, isMe: boolean) {
-  const color = memberColor(member.color);
+  const tone = TONE_STYLE[memberTone(member.color)];
   const initial = escapeHtml(member.name.trim().charAt(0).toUpperCase() || "?");
   const name = escapeHtml(isMe ? "Dig" : member.name);
   return L.divIcon({
-    className: "pc-marker",
-    html: `<div style="display:flex;flex-direction:column;align-items:center;gap:2px">
-      <div style="width:28px;height:28px;border-radius:50%;background:${color};color:#0b1020;border:3px solid #0b1020;display:flex;align-items:center;justify-content:center;font:700 13px var(--font-sans)">${initial}</div>
-      <div style="padding:1px 6px;border-radius:8px;background:rgb(11 16 32 / .85);color:#f4f1ea;font:500 11px var(--font-sans);white-space:nowrap">${name}</div>
+    className: "map-marker",
+    html: `<div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+      <div style="width:30px;height:30px;border-radius:50%;background:${tone.bg};color:${tone.fg};box-shadow:0 0 0 2px var(--cream-100),0 0 0 4px var(--gold-500);display:flex;align-items:center;justify-content:center;font:15px/1 var(--font-display)">${initial}</div>
+      <div style="padding:2px 7px;border-radius:999px;background:var(--green-800);color:var(--cream-100);font:600 11px/1.3 var(--font-body);white-space:nowrap">${name}</div>
     </div>`,
-    iconSize: [80, 48],
-    iconAnchor: [40, 16],
+    iconSize: [90, 52],
+    iconAnchor: [45, 17],
   });
 }
 
 const nearbyIcon = L.divIcon({
-  className: "pc-marker",
-  html: `<div style="width:22px;height:22px;border-radius:50%;background:rgb(94 200 242 / .9);border:2px solid #0b1020;display:flex;align-items:center;justify-content:center;font-size:11px">🍺</div>`,
-  iconSize: [22, 22],
-  iconAnchor: [11, 11],
+  className: "map-marker",
+  html: `<div style="width:24px;height:24px;border-radius:50%;background:var(--oxblood-700);border:2px solid var(--cream-100);box-shadow:var(--shadow-card);display:flex;align-items:center;justify-content:center;color:var(--cream-100);font:700 14px/1 var(--font-body)">+</div>`,
+  iconSize: [24, 24],
+  iconAnchor: [12, 12],
 });
 
 const meIcon = L.divIcon({
-  className: "pc-marker",
-  html: `<div style="width:16px;height:16px;border-radius:50%;background:#5ec8f2;border:3px solid #f4f1ea;box-shadow:0 0 0 6px rgb(94 200 242 / .3)"></div>`,
-  iconSize: [16, 16],
-  iconAnchor: [8, 8],
+  className: "map-marker",
+  html: `<div style="width:18px;height:18px;border-radius:50%;background:var(--green-800);border:3px solid var(--gold-500);box-shadow:0 0 0 6px rgb(201 162 74 / .3)"></div>`,
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
 });
 
 function Events({
@@ -144,9 +147,8 @@ export default function MapView(props: MapViewProps) {
       zoomControl={false}
     >
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-        subdomains="abcd"
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
         maxZoom={19}
       />
       <Events onMapClick={props.onMapClick} onCenterChange={props.onCenterChange} />
@@ -155,7 +157,7 @@ export default function MapView(props: MapViewProps) {
       {stops.length > 1 && (
         <Polyline
           positions={stops.map((s) => [s.lat, s.lng])}
-          pathOptions={{ color: "#f5b83d", weight: 4, opacity: 0.8, dashArray: "2 10", lineCap: "round" }}
+          pathOptions={{ color: "#1F3B2D", weight: 4, opacity: 0.85, dashArray: "1 10", lineCap: "round" }}
         />
       )}
 

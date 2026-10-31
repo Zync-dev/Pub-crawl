@@ -15,7 +15,8 @@ En lille app til mig og mine venner til J-dag fredag den 6. november 2026. Den s
 
 - **Next.js 16** som webapp. Vennerne åbner et link og kan lægge den på hjemmeskærmen.
 - **Supabase** med anonyme brugere, Row Level Security og Realtime, så alle ser ændringer med det samme.
-- **Leaflet** med kort fra OpenStreetMap og CARTO.
+- **Leaflet** med kort fra OpenStreetMap.
+- **Design:** Pub Crawl Design System ("Last Orders": racing-grøn, bladguld, dobbelte guldstreger, DM Serif Display og Libre Franklin). Farver og komponentklasser ligger i `src/design/pub-crawl.css`, reglerne i `src/design/README.md`, og React-komponenterne i `src/components/ds`. Ikonerne er Lucide, og der bruges ingen emojis.
 
 Bemærk: en webapp kan kun dele positionen, mens den er åben. På iPhone stopper det, når skærmen slukker eller appen ligger i baggrunden.
 

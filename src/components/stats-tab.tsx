@@ -1,10 +1,10 @@
 "use client";
 
-import { memberColor } from "@/lib/colors";
+import { memberTone } from "@/lib/colors";
 import { DRINK_BY_KIND, DRINK_KINDS, formatUnits } from "@/lib/drinks";
 import { kindTotals, memberStats, stopTotals } from "@/lib/stats";
 import type { Drink, DrinkKind, Member, Stop } from "@/lib/types";
-import { Avatar } from "./ui";
+import { Avatar, Badge, Card, Icon, SectionTitle } from "./ds";
 
 export function StatsTab({
   members,
@@ -22,111 +22,114 @@ export function StatsTab({
   const people = memberStats(members, drinks, now);
   const totals = kindTotals(drinks);
   const perStop = stopTotals(stops, drinks).filter((s) => s.count > 0);
-  const groupUnits = people.reduce((sum, p) => sum + p.units, 0);
   const top = Math.max(1, ...people.map((p) => p.units));
   const topKind = Math.max(1, ...Object.values(totals).map((n) => n ?? 0));
   const topStop = Math.max(1, ...perStop.map((s) => s.count));
 
   if (!drinks.length) {
     return (
-      <div className="p-6 text-center text-muted">
-        Ingen har skrevet noget ind endnu. Når I begynder, kommer stillingen her.
+      <div className="px-4 py-[18px]">
+        <Card variant="framed" className="text-center">
+          <p className="pc-label mb-2 text-oxblood-700">Ingen omgange endnu</p>
+          <p className="text-muted">Når I skriver drinks ind under Nu, kommer stillingen her.</p>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-5 p-4">
+    <div className="flex flex-col gap-6 px-4 py-[18px]">
       <section>
-        <h2 className="mb-1 font-semibold">Stillingen</h2>
-        <p className="mb-3 text-sm text-muted">
-          {formatUnits(groupUnits)} genstande i alt for holdet
-        </p>
-        <ol className="flex flex-col gap-2">
-          {people.map((p, i) => (
-            <li
-              key={p.member.user_id}
-              className={`rounded-2xl border bg-surface p-3 ${p.member.user_id === userId ? "border-gold/60" : "border-line"}`}
-            >
-              <div className="flex items-center gap-3">
-                <span className="w-5 text-center text-sm text-muted">{i + 1}</span>
-                <Avatar name={p.member.name} color={memberColor(p.member.color)} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">
-                    {p.member.name}
-                    {p.member.user_id === userId && <span className="text-muted"> (dig)</span>}
-                  </span>
-                  <span className="block text-xs text-muted">
-                    {p.count} drinks · {p.water} vand
-                    {p.perHour !== null && ` · ${formatUnits(p.perHour)} gst./time`}
-                  </span>
-                </span>
-                <span className="text-right">
-                  <span className="block text-xl font-bold tabular-nums">{formatUnits(p.units)}</span>
-                  <span className="block text-[11px] text-muted">gst.</span>
-                </span>
-              </div>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-raised">
-                <div
-                  className="h-full rounded-full"
-                  style={{ width: `${(p.units / top) * 100}%`, background: memberColor(p.member.color) }}
-                />
-              </div>
-              {Object.keys(p.byKind).length > 0 && (
-                <p className="mt-2 text-sm">
-                  {DRINK_KINDS.filter((d) => p.byKind[d.kind]).map((d) => (
-                    <span key={d.kind} className="mr-3 whitespace-nowrap">
-                      {d.emoji} {p.byKind[d.kind]}
+        <SectionTitle eyebrow="Flest genstande" title="Hvem fører?" />
+        <ol className="flex flex-col gap-2.5">
+          {people.map((p, i) => {
+            const me = p.member.user_id === userId;
+            return (
+              <li key={p.member.user_id}>
+                <Card padding="12px 14px" variant={i === 0 && p.units > 0 ? "framed" : "plain"}>
+                  <div className="flex items-center gap-3">
+                    <span className="w-5 text-center font-serif text-[20px] text-muted">{i + 1}</span>
+                    <Avatar name={p.member.name} tone={memberTone(p.member.color)} size={40} ring={me} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-serif text-[20px] leading-tight">
+                        {p.member.name}
+                        {me && <span className="text-muted"> (dig)</span>}
+                      </span>
+                      <span className="block text-[13px] text-muted">
+                        {p.count} drinks · {p.water} vand
+                        {p.perHour !== null && ` · ${formatUnits(p.perHour)} i timen`}
+                      </span>
                     </span>
-                  ))}
-                </p>
-              )}
-            </li>
-          ))}
+                    <span className="text-right">
+                      <span className="block font-serif text-[28px] leading-none tabular-nums text-green-800">
+                        {formatUnits(p.units)}
+                      </span>
+                      <span className="pc-label text-muted">Gst.</span>
+                    </span>
+                  </div>
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-cream-300">
+                    <div className="h-full rounded-full bg-gold-500" style={{ width: `${(p.units / top) * 100}%` }} />
+                  </div>
+                  {Object.keys(p.byKind).length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted">
+                      {DRINK_KINDS.filter((d) => p.byKind[d.kind]).map((d) => (
+                        <span key={d.kind} className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                          <Icon name={d.icon} size={14} color="var(--green-800)" />
+                          {p.byKind[d.kind]} {d.label.toLowerCase()}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {i === 0 && p.units > 0 && (
+                    <div className="mt-3">
+                      <Badge tone="gold" icon="beer">
+                        Fører
+                      </Badge>
+                    </div>
+                  )}
+                </Card>
+              </li>
+            );
+          })}
         </ol>
       </section>
 
       <section>
-        <h2 className="mb-3 font-semibold">Hvad drikker vi?</h2>
-        <ul className="flex flex-col gap-2">
+        <SectionTitle eyebrow="Hele holdet" title="Hvad drikker vi?" />
+        <Card className="flex flex-col gap-3">
           {(Object.entries(totals) as [DrinkKind, number][])
             .sort((a, b) => b[1] - a[1])
             .map(([kind, count]) => (
-              <li key={kind} className="flex items-center gap-3">
-                <span className="w-24 shrink-0 text-sm">
-                  {DRINK_BY_KIND[kind].emoji} {DRINK_BY_KIND[kind].label}
+              <div key={kind} className="flex items-center gap-3">
+                <span className="flex w-24 shrink-0 items-center gap-2 text-sm font-semibold">
+                  <Icon name={DRINK_BY_KIND[kind].icon} size={16} color="var(--green-800)" />
+                  {DRINK_BY_KIND[kind].label}
                 </span>
-                <span className="h-6 flex-1 overflow-hidden rounded-lg bg-raised">
-                  <span
-                    className="block h-full rounded-lg bg-gold/80"
-                    style={{ width: `${(count / topKind) * 100}%` }}
-                  />
+                <span className="h-5 flex-1 overflow-hidden rounded-[var(--radius-xs)] bg-cream-300">
+                  <span className="block h-full bg-green-800" style={{ width: `${(count / topKind) * 100}%` }} />
                 </span>
-                <span className="w-8 text-right tabular-nums">{count}</span>
-              </li>
+                <span className="w-7 text-right font-serif text-[18px] tabular-nums">{count}</span>
+              </div>
             ))}
-        </ul>
+        </Card>
       </section>
 
       {perStop.length > 0 && (
         <section>
-          <h2 className="mb-3 font-semibold">Pr. pub</h2>
-          <ul className="flex flex-col gap-2">
+          <SectionTitle eyebrow="Drinks pr. pub" title="Hvor gik det stærkest?" />
+          <Card className="flex flex-col gap-3">
             {perStop.map(({ stop, count, units }) => (
-              <li key={stop.id} className="flex items-center gap-3">
-                <span className="w-28 shrink-0 truncate text-sm">{stop.name}</span>
-                <span className="h-6 flex-1 overflow-hidden rounded-lg bg-raised">
-                  <span
-                    className="block h-full rounded-lg bg-sky/70"
-                    style={{ width: `${(count / topStop) * 100}%` }}
-                  />
+              <div key={stop.id} className="flex items-center gap-3">
+                <span className="w-28 shrink-0 truncate text-sm font-semibold">{stop.name}</span>
+                <span className="h-5 flex-1 overflow-hidden rounded-[var(--radius-xs)] bg-cream-300">
+                  <span className="block h-full bg-gold-500" style={{ width: `${(count / topStop) * 100}%` }} />
                 </span>
-                <span className="w-16 text-right text-sm tabular-nums">
-                  {count} / {formatUnits(units)} gst.
+                <span className="w-16 text-right text-[13px] tabular-nums text-muted">
+                  {count} · {formatUnits(units)} gst.
                 </span>
-              </li>
+              </div>
             ))}
-          </ul>
+          </Card>
         </section>
       )}
     </div>

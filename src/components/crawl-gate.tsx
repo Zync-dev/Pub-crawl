@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { readName, saveName } from "@/lib/name";
 import { rememberCrawl } from "@/lib/recent";
 import { ensureUser, errorText, getSupabase, supabaseConfigured } from "@/lib/supabase";
 import type { Crawl } from "@/lib/types";
+import { AskProvider } from "./ask";
 import { CrawlApp } from "./crawl-app";
-import { Button, Card, Input, Label } from "./ui";
+import { Button, Input, Logo } from "./ds";
 
 type State =
   | { step: "loading" }
@@ -61,29 +62,34 @@ export function CrawlGate({ code }: { code: string }) {
   }, [load]);
 
   if (state.step === "ready") {
-    return <CrawlApp initial={state.crawl} userId={state.userId} />;
+    return (
+      <AskProvider>
+        <CrawlApp initial={state.crawl} userId={state.userId} />
+      </AskProvider>
+    );
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-4 px-4 py-10">
-      {state.step === "loading" && <p className="text-center text-muted">Henter turen…</p>}
+    <Splash>
+      {state.step === "loading" && <p className="pc-eyebrow text-center text-gold-300">Henter turen</p>}
       {state.step === "error" && (
-        <Card>
-          <p className="mb-3 text-danger">{state.message}</p>
-          <Button variant="secondary" onClick={() => void load()}>
+        <Panel>
+          <p className="mb-4 text-oxblood-500">{state.message}</p>
+          <Button variant="primary" fullWidth onClick={() => void load()}>
             Prøv igen
           </Button>
-        </Card>
+        </Panel>
       )}
       {state.step === "missing" && (
-        <Card>
-          <p className="mb-3">
-            Der findes ingen tur med koden <span className="font-mono">{code}</span>.
+        <Panel>
+          <p className="pc-label mb-2 text-oxblood-700">Ingen tur</p>
+          <p className="mb-4">
+            Der findes ingen tur med koden <strong>{code}</strong>.
           </p>
-          <Link href="/" className="text-gold underline">
+          <Link href="/" className="pc-btn pc-btn--secondary pc-btn--full">
             Til forsiden
           </Link>
-        </Card>
+        </Panel>
       )}
       {state.step === "invite" && (
         <JoinForm
@@ -96,7 +102,26 @@ export function CrawlGate({ code }: { code: string }) {
           }}
         />
       )}
+    </Splash>
+  );
+}
+
+function Splash({ children }: { children: ReactNode }) {
+  return (
+    <main className="pc-on-dark flex min-h-dvh flex-1 flex-col bg-green-800 px-5 pb-[max(32px,env(safe-area-inset-bottom))] pt-[max(48px,env(safe-area-inset-top))]">
+      <div className="flex flex-1 items-center justify-center py-6">
+        <Logo size={0.8} />
+      </div>
+      <div className="mx-auto w-full max-w-sm">{children}</div>
     </main>
+  );
+}
+
+function Panel({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-[var(--radius-md)] bg-cream-100 p-5 text-body" style={{ border: "var(--rule-double)" }}>
+      {children}
+    </div>
   );
 }
 
@@ -132,28 +157,27 @@ function JoinForm({
   }
 
   return (
-    <Card>
-      <p className="text-sm uppercase tracking-[0.2em] text-gold">Du er inviteret</p>
-      <h1 className="mt-1 text-2xl font-bold">{crawlName}</h1>
-      <p className="mb-4 text-muted">
-        {memberCount === 1 ? "1 er med" : `${memberCount} er med`}
+    <Panel>
+      <p className="pc-label text-oxblood-700">
+        Du er inviteret · {memberCount === 1 ? "1 er med" : `${memberCount} er med`}
       </p>
-      <form onSubmit={submit} className="flex flex-col gap-3">
-        <label>
-          <Label>Dit navn</Label>
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={30}
-            autoComplete="given-name"
-            required
-          />
-        </label>
-        <Button type="submit" disabled={busy}>
-          {busy ? "Hopper med…" : "Hop med"}
+      <h1 className="mb-4 mt-2 font-serif text-[34px] italic leading-[1.05]">{crawlName}</h1>
+      <form onSubmit={submit} className="flex flex-col gap-4">
+        <Input
+          label="Dit navn"
+          icon="user"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          maxLength={30}
+          placeholder="Fx Freja"
+          autoComplete="given-name"
+          error={error}
+          required
+        />
+        <Button type="submit" variant="primary" size="lg" fullWidth iconRight="chevron-right" disabled={busy}>
+          {busy ? "Hopper med…" : "Hop med på turen"}
         </Button>
-        {error && <p className="text-sm text-danger">{error}</p>}
       </form>
-    </Card>
+    </Panel>
   );
 }
