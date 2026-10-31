@@ -10,6 +10,7 @@ import type { CrawlActions } from "./crawl-app";
 // nav-live: Vis vej
 import { DirectionsButton } from "./directions-button";
 import { Button, Card, Icon, SectionTitle } from "./ds";
+import { RollCallCard, RollCallStarter, useRollCallContext } from "./roll-call"; // Er alle med? (rollcall)
 import { NextRoundCard } from "./rounds"; // Omgange
 
 export function NowTab({
@@ -37,11 +38,15 @@ export function NowTab({
 }) {
   return (
     <div className="flex flex-col gap-4 px-4 py-[18px]">
+      {/* Er alle med? (rollcall): kortet øverst, mens opråbet er åbent. */}
+      <RollCallCard stops={stops} />
       {currentStop && remaining !== null ? (
         <AtPub crawl={crawl} stops={stops} stop={currentStop} remaining={remaining} actions={actions} />
       ) : (
         <OnTheWay stops={stops} nextStop={nextStop} actions={actions} onOpenRoute={onOpenRoute} />
       )}
+      {/* Er alle med? (rollcall): "Sidst med" og knappen til at starte et opråb. */}
+      <RollCallStarter userId={userId} fromStopId={currentStop?.id ?? null} />
       {/* Omgange: hvis tur er det til at give? */}
       <NextRoundCard />
       <Drinks drinks={drinks} stops={stops} userId={userId} currentStop={currentStop} now={now} actions={actions} />
@@ -63,6 +68,7 @@ function AtPub({
   actions: CrawlActions;
 }) {
   const ask = useAsk();
+  const rollCall = useRollCallContext(); // Er alle med? (rollcall)
   const buzzed = useRef<string | null>(null);
   const overtime = remaining <= 0;
   const progress = Math.min(1, Math.max(0, 1 - remaining / (stop.minutes * 60_000)));
@@ -88,7 +94,11 @@ function AtPub({
       confirm: "Ja, vi går videre",
       cancel: "Ikke endnu",
     });
-    if (ok) await actions.leave();
+    if (ok) {
+      await actions.leave();
+      // Er alle med? (rollcall): tæl holdet, når I går videre.
+      void rollCall.start(stop.id, following?.id ?? null);
+    }
   }
 
   return (
