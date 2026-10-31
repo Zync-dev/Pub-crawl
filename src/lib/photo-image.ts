@@ -26,6 +26,15 @@ function toBlob(canvas: HTMLCanvasElement, quality: number) {
   return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
 }
 
+// Størrelsen efter nedskalering: den længste side bliver højst maxSide, og små billeder forstørres aldrig.
+export function fitWithin(width: number, height: number, maxSide = PHOTO_MAX_SIDE) {
+  const scale = Math.min(1, maxSide / Math.max(width, height));
+  return {
+    width: Math.max(1, Math.min(maxSide, Math.round(width * scale))),
+    height: Math.max(1, Math.min(maxSide, Math.round(height * scale))),
+  };
+}
+
 export async function preparePhoto(file: Blob, maxSide = PHOTO_MAX_SIDE): Promise<PreparedPhoto> {
   let source: ImageBitmap | HTMLImageElement;
   let width: number;
@@ -45,9 +54,7 @@ export async function preparePhoto(file: Blob, maxSide = PHOTO_MAX_SIDE): Promis
   }
   if (!width || !height) throw new Error("image_unreadable");
 
-  const scale = Math.min(1, maxSide / Math.max(width, height));
-  const w = Math.max(1, Math.round(width * scale));
-  const h = Math.max(1, Math.round(height * scale));
+  const { width: w, height: h } = fitWithin(width, height, maxSide);
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;

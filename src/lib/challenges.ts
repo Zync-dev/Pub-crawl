@@ -32,17 +32,24 @@ export const CHALLENGES = [
   "Fri runde! Nyd det.",
 ];
 
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// Er teksten lavet ud fra skabelonen? {navn} kan være hvem som helst, også én, der er gået hjem.
+export function matchesTemplate(template: string, text: string) {
+  if (!template.includes("{navn}")) return template === text;
+  const [first, ...rest] = template.split("{navn}").map(escapeRegExp);
+  // Står {navn} flere steder, er det det samme navn alle steder.
+  return new RegExp(`^${first}(.+?)${rest.join("\\1")}$`).test(text);
+}
+
 // Returnerer også, hvem der blev trukket til {navn}, så udfordringen kan give point til dem.
 // target er null, når skabelonen ikke har {navn} (en udfordring for hele holdet).
+// previous er den udfyldte tekst fra sidst, så den samme skabelon ikke trækkes to gange i træk.
 export function drawChallenge<T extends { name: string }>(
   people: T[],
   previous?: string | null,
 ): { text: string; target: T | null } {
-  // previous er den udfyldte tekst, så skabeloner med {navn} sammenlignes med navnene sat ind.
-  const fills = [...people.map((p) => p.name), "Den yngste"];
-  const same = (c: string) =>
-    c === previous || (c.includes("{navn}") && fills.some((name) => c.replaceAll("{navn}", name) === previous));
-  const pool = CHALLENGES.filter((c) => !same(c));
+  const pool = previous ? CHALLENGES.filter((c) => !matchesTemplate(c, previous)) : CHALLENGES;
   const template = pool[Math.floor(Math.random() * pool.length)];
   if (!template.includes("{navn}")) return { text: template, target: null };
   const target = people.length ? people[Math.floor(Math.random() * people.length)] : null;

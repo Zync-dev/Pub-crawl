@@ -5,6 +5,17 @@ import { drawChallenge } from "@/lib/challenges";
 import { getSupabase } from "@/lib/supabase";
 import type { Crawl, Member, Stop } from "@/lib/types";
 import type { CrawlData } from "@/lib/use-crawl";
+import {
+  crawlRow,
+  type CrawlFields,
+  fieldsOf,
+  NOBODY,
+  once,
+  undoFailedText,
+  withCrawl,
+  withoutStop,
+  withStopBack,
+} from "@/lib/undo-fields";
 import type { HeldView, HoldChange, HoldHandle } from "@/lib/use-holds";
 import { useAsk } from "./ask";
 
@@ -12,47 +23,7 @@ import { useAsk } from "./ask";
 // Fortryd skriver kun, hvis turen stadig ser ud, som vi efterlod den, så to telefoner
 // ikke fortryder hinandens ændringer, og et dobbelttryk gør ingenting anden gang.
 
-// games: current_challenge_id følger med, så Fortryd også giver den gamle udfordring og dens stemmer tilbage.
-type CrawlFields = Pick<Crawl, "current_stop_id" | "arrived_at" | "challenge"> & {
-  current_challenge_id: string | null;
-};
-
 const UNDO_MS = 6_000;
-const NOBODY: CrawlFields = { current_stop_id: null, arrived_at: null, challenge: null, current_challenge_id: null };
-
-const byPosition = (a: Stop, b: Stop) => a.position - b.position || a.created_at.localeCompare(b.created_at);
-
-const fieldsOf = (crawl: Crawl): CrawlFields => ({
-  current_stop_id: crawl.current_stop_id,
-  arrived_at: crawl.arrived_at,
-  challenge: crawl.challenge,
-  current_challenge_id: crawl.current_challenge_id ?? null,
-});
-
-// games: rækken til crawls. current_challenge_id skrives kun, når der er noget at skrive
-// (en ny værdi, eller en gammel, der skal ryddes), så det også virker uden migration 0006.
-function crawlRow(fields: CrawlFields, replacing: CrawlFields) {
-  const { current_challenge_id, ...rest } = fields;
-  return current_challenge_id || replacing.current_challenge_id ? { ...rest, current_challenge_id } : rest;
-}
-
-// Sætter turens felter og eventuelt én pubs visited_at.
-function withCrawl(fields: CrawlFields, visited?: { stopId: string; at: string | null }): HoldChange {
-  return (v) => ({
-    crawl: { ...v.crawl, ...fields },
-    stops: visited ? v.stops.map((s) => (s.id === visited.stopId ? { ...s, visited_at: visited.at } : s)) : v.stops,
-  });
-}
-
-// Kan kun køres én gang, uanset hvor mange gange der trykkes.
-function once(fn: () => Promise<void>) {
-  let used = false;
-  return () => {
-    if (used) return;
-    used = true;
-    void fn();
-  };
-}
 
 export type UndoableActions = ReturnType<typeof useUndoableActions>;
 
@@ -92,14 +63,7 @@ export function useUndoableActions({
     back.drop();
     patch((p) => ({ ...p, ...redo({ crawl: p.crawl, stops: p.stops } satisfies HeldView) }));
     void refetch();
-    ask.toast(
-      !error
-        ? "Holdet nåede at ændre det."
-        : error.code === "23503"
-          ? "Pubben er ikke på ruten længere."
-          : "Det blev ikke fortrudt. Tjek forbindelsen.",
-      "danger",
-    );
+    ask.toast(undoFailedText(error), "danger");
   }
 
   function offerUndo(message: string, undo: () => Promise<void>) {
@@ -197,21 +161,14 @@ export function useUndoableActions({
       const before = fieldsOf(crawl);
       const key = `stop:${stop.id}`;
       // Databasen sætter current_stop_id til null, når den nuværende pub slettes. Det gør vi også.
-      const removed: HoldChange = (v) => ({
-        crawl: wasCurrent && v.crawl.current_stop_id === stop.id ? { ...v.crawl, current_stop_id: null } : v.crawl,
-        stops: v.stops.filter((s) => s.id !== stop.id),
-      });
+      const removed = withoutStop(stop, wasCurrent);
       const held = show(key, removed);
       const ok = await run(supabase.from("stops").delete().eq("id", stop.id));
       held.release();
       if (!ok) return;
 
       offerUndo(`${stop.name} er fjernet fra ruten`, async () => {
-        const restored: HoldChange = (v) => ({
-          crawl: wasCurrent && !v.crawl.current_stop_id ? { ...v.crawl, ...before } : v.crawl,
-          stops: [...v.stops.filter((s) => s.id !== stop.id), stop].sort(byPosition),
-        });
-        const back = show(key, restored);
+        const back = show(key, withStopBack(stop, wasCurrent, before));
         // Samme id, så det er den samme pub igen. Findes den allerede, sker der ingenting.
         const { error } = await supabase.from("stops").upsert(
           {

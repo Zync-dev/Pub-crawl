@@ -5,13 +5,27 @@ import { getSupabase } from "./supabase";
 import type { Drink } from "./types";
 import type { CrawlData } from "./use-crawl";
 import { newId } from "./uuid";
+import {
+  addSettled,
+  entryKey,
+  markSent,
+  markWaiting as withWaiting,
+  mergeDrinks,
+  outboxStorageKey,
+  parseOutbox,
+  pruneSettled,
+  queueRemoval,
+  retryable,
+  type OutboxEntry,
+  type Settled,
+  waitingCount,
+  waitingDrinkIds,
+} from "./drink-outbox";
+
+export type { OutboxEntry } from "./drink-outbox";
 
 // Offline-kø for drinks. Alt går gennem køen, så en drink tæller med det samme og sendes,
 // når der er net. Køen ligger i hukommelsen og i localStorage, så den overlever en genindlæsning.
-
-export type OutboxEntry =
-  | { op: "insert"; drink: Drink; waiting?: boolean }
-  | { op: "delete"; id: string; waiting?: boolean };
 
 type Patch = (update: (prev: CrawlData) => CrawlData) => void;
 type Result = "done" | "retry" | "dropped";
@@ -23,27 +37,9 @@ const SLOW_MS = 1_500;
 // Sendte drinks bliver liggende lidt, så en forældet genhentning ikke får dem til at blinke.
 const SETTLE_MS = 30_000;
 
-const entryId = (e: OutboxEntry) => (e.op === "insert" ? e.drink.id : e.id);
-const entryKey = (e: OutboxEntry) => `${e.op}:${entryId(e)}`;
-const byTime = (a: Drink, b: Drink) => Date.parse(a.created_at) - Date.parse(b.created_at);
-
-function valid(e: unknown): e is OutboxEntry {
-  if (!e || typeof e !== "object") return false;
-  const x = e as Record<string, unknown>;
-  if (x.op === "delete") return typeof x.id === "string";
-  if (x.op !== "insert" || !x.drink || typeof x.drink !== "object") return false;
-  const d = x.drink as Record<string, unknown>;
-  return typeof d.id === "string" && typeof d.crawl_id === "string" && typeof d.kind === "string";
-}
-
 function load(key: string): OutboxEntry[] {
   try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    // Det, der lå tilbage fra sidst, har ventet. Så får det mærket med det samme.
-    return parsed.filter(valid).map((e) => ({ ...e, waiting: true }));
+    return parseOutbox(localStorage.getItem(key));
   } catch {
     return [];
   }
@@ -54,11 +50,6 @@ function save(key: string, entries: OutboxEntry[]) {
     if (entries.length) localStorage.setItem(key, JSON.stringify(entries));
     else localStorage.removeItem(key);
   } catch {}
-}
-
-// Intet svar (intet net, timeout), udløbet login og serverfejl prøves igen. Resten er endelige afslag.
-function retryable(status: number, code?: string) {
-  return !code || status === 0 || status === 401 || status === 408 || status === 429 || status >= 500;
 }
 
 async function send(entry: OutboxEntry): Promise<{ result: Result; drink?: Drink }> {
@@ -106,9 +97,9 @@ export function useDrinkOutbox(
   patch: Patch,
   onDropped: (entry: OutboxEntry) => void,
 ) {
-  const key = `pc-drink-outbox:${crawlId}:${userId}`;
+  const key = outboxStorageKey(crawlId, userId);
   const [entries, setEntries] = useState<OutboxEntry[]>(() => load(key));
-  const [settled, setSettled] = useState<{ id: string; drink: Drink | null; until: number }[]>([]);
+  const [settled, setSettled] = useState<Settled[]>([]);
   // Køen selv ligger i en ref, så sendeløkken altid læser den nyeste udgave.
   const queue = useRef(entries);
   const inFlight = useRef<string | null>(null);
@@ -130,17 +121,16 @@ export function useDrinkOutbox(
   // Uden nøgle får alt i køen mærket.
   const markWaiting = useCallback(
     (only?: string) => {
-      const hit = (e: OutboxEntry) => !only || entryKey(e) === only;
-      if (queue.current.every((e) => e.waiting || !hit(e))) return;
-      commit(queue.current.map((e) => (hit(e) && !e.waiting ? { ...e, waiting: true } : e)));
+      const next = withWaiting(queue.current, only);
+      if (next !== queue.current) commit(next);
     },
     [commit],
   );
 
   const settle = useCallback((id: string, drink: Drink | null) => {
     const until = Date.now() + SETTLE_MS;
-    setSettled((list) => [...list.filter((s) => s.id !== id), { id, drink, until }]);
-    setTimeout(() => setSettled((list) => list.filter((s) => s.until > Date.now())), SETTLE_MS + 50);
+    setSettled((list) => addSettled(list, id, drink, until));
+    setTimeout(() => setSettled((list) => pruneSettled(list, Date.now())), SETTLE_MS + 50);
   }, []);
 
   const flush = useCallback(async () => {
@@ -160,6 +150,9 @@ export function useDrinkOutbox(
         clearTimeout(slow);
         inFlight.current = null;
         if (result === "retry") {
+          // Svaret kan være gået tabt på vejen, så drinken kan godt ligge på serveren.
+          const sent = markSent(queue.current, k);
+          if (sent !== queue.current) commit(sent);
           markWaiting();
           break;
         }
@@ -192,18 +185,10 @@ export function useDrinkOutbox(
 
   const remove = useCallback(
     (drink: Drink) => {
-      const insertKey = `insert:${drink.id}`;
-      const deleteKey = `delete:${drink.id}`;
-      const queued = queue.current.some((e) => entryKey(e) === insertKey);
-      if (queued && inFlight.current !== insertKey) {
-        // Den nåede aldrig serveren, så den skal bare ud af køen.
-        commit(queue.current.filter((e) => entryKey(e) !== insertKey));
-        return;
-      }
-      if (queue.current.some((e) => entryKey(e) === deleteKey)) return;
-      // Er den på vej op lige nu, sendes sletningen bagefter i samme kø.
-      commit([...queue.current, { op: "delete", id: drink.id }]);
-      void flush();
+      const change = queueRemoval(queue.current, drink.id, inFlight.current);
+      if (!change) return;
+      commit(change.next);
+      if (change.flush) void flush();
     },
     [commit, flush],
   );
@@ -232,28 +217,10 @@ export function useDrinkOutbox(
   }, [pending, flush]);
 
   // Ventende drinks lægges oven på det, useCrawl har hentet. Ventende sletninger skjules.
-  const merged = useMemo(() => {
-    if (!entries.length && !settled.length) return drinks;
-    const hidden = new Set<string>();
-    const extra: Drink[] = [];
-    for (const s of settled) {
-      if (s.drink) extra.push(s.drink);
-      else hidden.add(s.id);
-    }
-    for (const e of entries) {
-      if (e.op === "insert") extra.push(e.drink);
-      else hidden.add(e.id);
-    }
-    const byId = new Map(drinks.map((d) => [d.id, d]));
-    for (const d of extra) if (!byId.has(d.id)) byId.set(d.id, d);
-    return [...byId.values()].filter((d) => !hidden.has(d.id)).sort(byTime);
-  }, [drinks, entries, settled]);
+  const merged = useMemo(() => mergeDrinks(drinks, entries, settled), [drinks, entries, settled]);
 
-  const waitingIds = useMemo(
-    () => new Set(entries.flatMap((e) => (e.op === "insert" && e.waiting ? [e.drink.id] : []))),
-    [entries],
-  );
-  const waiting = entries.filter((e) => e.waiting).length;
+  const waitingIds = useMemo(() => waitingDrinkIds(entries), [entries]);
+  const waiting = waitingCount(entries);
 
   return { drinks: merged, waitingIds, waiting, add, remove, flush };
 }
