@@ -44,7 +44,7 @@ export function ArrangerCard({
     const ok = await ask.confirm({
       eyebrow: "Fjern fra holdet",
       title: `${member.name} skal ikke med?`,
-      body: `${genitive(member.name)} drinks, omgange og point forsvinder fra stillingen. Tag en ny kode bagefter, så ${member.name} ikke kan komme ind igen.`,
+      body: `${genitive(member.name)} drinks, omgange, point og trukne udfordringer forsvinder. Live-linket skifter også. Tag en ny kode bagefter, så ${member.name} ikke kan komme ind igen.`,
       confirm: "Fjern fra holdet",
       cancel: "Behold",
       danger: true,

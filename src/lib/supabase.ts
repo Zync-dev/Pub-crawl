@@ -40,6 +40,7 @@ export async function ensureUser() {
 const errorTexts: Record<string, string> = {
   crawl_not_found: "Der findes ingen tur med den kode.",
   crawl_full: "Turen er fuld.",
+  rate_limited: "For mange forkerte koder. Prøv igen om lidt.",
   too_many_crawls: "Du har oprettet for mange ture.",
   not_authenticated: "Du er ikke logget ind. Prøv at genindlæse siden.",
 };

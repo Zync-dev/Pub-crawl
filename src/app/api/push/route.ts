@@ -1,13 +1,17 @@
 import { createClient } from "@supabase/supabase-js";
 import webpush, { WebPushError } from "web-push";
+import { isPushEndpoint } from "@/lib/push-endpoint";
 
-// Sender en besked til holdet. Kaldes af appen med brugerens egen adgangsnøgle, så databasen
-// selv tjekker, at man er med på turen, og at den samme besked ikke er sendt før (push_targets).
+// Sender en besked til holdet. Kaldes af appen med brugerens egen adgangsnøgle. Ruten tjekker nøglen
+// og spørger så databasen med serverens hemmelige nøgle, så modtagernes endpoints og nøgler aldrig
+// når en browser. Databasen tjekker, at man er med på turen, og at beskeden ikke er sendt før.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KIND = /^[a-z_]{1,20}$/;
 // Kun stier i appen, så en besked aldrig kan sende nogen ud på en fremmed side.
 const PATH = /^\/(?!\/)[A-Za-z0-9\-._~/?=&%]{0,199}$/;
+// Et hold på 30 med fem apparater hver er 150. Ingen besked skal ud til flere end det.
+const MAX_TARGETS = 150;
 
 type Body = { crawlId: string; kind: string; key: string; title: string; body: string; url: string };
 type Target = { endpoint: string; p256dh: string; auth: string };
@@ -35,7 +39,8 @@ function parse(raw: unknown): Body | null {
 
 export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  // Kun på serveren. Må aldrig ligge i en NEXT_PUBLIC_-variabel.
+  const supabaseKey = process.env.SUPABASE_SECRET_KEY;
   const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
   const privateKey = process.env.VAPID_PRIVATE_KEY;
   const subject = process.env.VAPID_SUBJECT;
@@ -57,29 +62,30 @@ export async function POST(request: Request) {
   }
   if (!input) return fail(400, "invalid_input");
 
-  // En klient, der taler med databasen som den bruger, der sendte nøglen.
   const supabase = createClient(supabaseUrl, supabaseKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-    global: { headers: { Authorization: `Bearer ${token}` } },
   });
+
+  // Hvem sender? Auth-serveren tjekker nøglen, før databasen får brugerens id.
+  const { data: who, error: authError } = await supabase.auth.getUser(token);
+  if (authError || !who.user) return fail(401, "not_authenticated");
 
   const { data, error } = await supabase.rpc("push_targets", {
     p_crawl: input.crawlId,
     p_kind: input.kind,
     p_key: input.key,
+    p_user: who.user.id,
   });
   if (error) {
     const message = error.message ?? "";
     if (message.includes("not_member")) return fail(403, "not_member");
     if (message.includes("rate_limited")) return fail(429, "rate_limited");
     if (message.includes("invalid_notification")) return fail(400, "invalid_input");
-    if (message.includes("not_authenticated") || error.code === "PGRST301" || error.code === "PGRST303") {
-      return fail(401, "not_authenticated");
-    }
+    if (message.includes("not_authenticated")) return fail(401, "not_authenticated");
     return fail(500, "push_failed");
   }
 
-  const targets = (data ?? []) as Target[];
+  const targets = ((data ?? []) as Target[]).filter((t) => isPushEndpoint(t.endpoint)).slice(0, MAX_TARGETS);
   if (!targets.length) return Response.json({ sent: 0, dropped: 0 });
 
   const payload = JSON.stringify({
@@ -92,7 +98,7 @@ export async function POST(request: Request) {
     vapidDetails: { subject, publicKey, privateKey },
     TTL: 15 * 60,
     urgency: "high",
-    timeout: 8000,
+    timeout: 5000,
   };
 
   const results = await Promise.allSettled(

@@ -1,7 +1,7 @@
 // Arrangørens værktøjer (0009): låst rute, fjern en deltager, ny kode og rollen videre.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Crawl, Stop } from "@/lib/types";
-import { addStop, crawlRow, denied, leave, newCrawl, noRows, ok, users, type TestCrawl, type TestUser } from "./helpers";
+import { addStop, crawlRow, denied, freshUser, leave, newCrawl, noRows, ok, users, type TestCrawl, type TestUser } from "./helpers";
 
 let a: TestUser, b: TestUser, c: TestUser, o: TestUser;
 let crawl: TestCrawl;
@@ -88,13 +88,27 @@ describe("remove_member", () => {
     denied(await a.c.rpc("remove_member", { p_crawl: crawl.id, p_user: o.id }), "member_not_found");
   });
 
-  it("fjerner deltageren og deres drinks", async () => {
+  it("fjerner deltageren, deres drinks og de udfordringer, de selv har trukket", async () => {
     ok(await c.c.from("drinks").insert({ crawl_id: crawl.id, kind: "beer", units: 1 }));
+    const spam = ok(await c.c.from("challenges").insert({ crawl_id: crawl.id, text: "Test db: spam" }).select("id").single<{ id: string }>());
+    const kept = ok(await b.c.from("challenges").insert({ crawl_id: crawl.id, text: "Test db: bliver" }).select("id").single<{ id: string }>());
     ok(await a.c.rpc("remove_member", { p_crawl: crawl.id, p_user: c.id }));
+    const left = ok(await a.c.from("challenges").select("id").in("id", [spam.id, kept.id]));
+    expect(left.map((r) => r.id)).toEqual([kept.id]);
     const members = ok(await a.c.from("members").select("user_id").eq("crawl_id", crawl.id));
     expect(members.map((m) => m.user_id).sort()).toEqual([a.id, b.id].sort());
     expect(ok(await a.c.from("drinks").select("id").eq("user_id", c.id).eq("crawl_id", crawl.id))).toEqual([]);
     expect(ok(await c.c.from("crawls").select("id").eq("id", crawl.id))).toEqual([]);
+  });
+
+  // Rettet i 0014: den fjernede kendte live-linket og kunne følge holdet resten af aftenen.
+  it("giver turen et nyt live-link, så den fjernede ikke kan følge med", async () => {
+    const before = crawl.share_token;
+    const after = (await crawlRow(a, crawl.id)).share_token;
+    expect(after).not.toBe(before);
+    expect(ok(await c.c.rpc("crawl_public", { p_token: before }))).toBeNull();
+    expect(ok(await c.c.rpc("crawl_public", { p_token: after }))).not.toBeNull();
+    crawl = { ...crawl, share_token: after };
   });
 });
 
@@ -109,7 +123,8 @@ describe("rotate_code", () => {
     const next = ok(await a.c.rpc("rotate_code", { p_crawl: crawl.id }).single<Crawl>());
     expect(next.code).toMatch(/^[A-Z0-9]{6}$/);
     expect(next.code).not.toBe(old);
-    denied(await c.c.rpc("join_crawl", { p_code: old, p_member_name: c.name }), "crawl_not_found");
+    // En forkert kode giver en tom række, så forsøget kan tælles (0014).
+    expect(ok(await c.c.rpc("join_crawl", { p_code: old, p_member_name: c.name }).single<Crawl>()).id).toBeNull();
     expect(ok(await c.c.rpc("crawl_preview", { p_code: old }))).toEqual([]);
     expect((await crawlRow(b, crawl.id)).code).toBe(next.code);
     crawl = { ...crawl, code: next.code };
@@ -152,6 +167,43 @@ describe("når arrangøren går hjem", () => {
   it("den, der er gået, kan ikke rette noget", async () => {
     noRows(await b.c.from("stops").update({ name: "Snyd" }).eq("id", stop.id).select());
     denied(await b.c.rpc("set_route_locked", { p_crawl: crawl.id, p_locked: true }), "not_arranger");
+  });
+});
+
+// Rettet i 0014: den, der oprettede turen og gik, før nogen kom med, beholdt arrangørens værktøjer
+// og kunne hente den nye kode og live-linket uden at være på holdet.
+describe("en arrangør, der gik alene", () => {
+  let solo: TestCrawl;
+
+  afterAll(async () => {
+    await leave(solo, a, b);
+  });
+
+  it("mister rollen, og den første, der kommer med, overtager", async () => {
+    solo = await newCrawl(a);
+    await leave(solo, a);
+    expect(ok(await b.c.rpc("join_crawl", { p_code: solo.code, p_member_name: b.name }).single<Crawl>()).created_by).toBe(b.id);
+    denied(await a.c.rpc("rotate_code", { p_crawl: solo.id }), "not_arranger");
+    denied(await a.c.rpc("rotate_share_token", { p_crawl: solo.id }), "not_creator");
+    denied(await a.c.rpc("set_route_locked", { p_crawl: solo.id, p_locked: true }), "not_arranger");
+    denied(await a.c.rpc("transfer_arranger", { p_crawl: solo.id, p_user: b.id }), "not_arranger");
+    denied(await a.c.rpc("remove_member", { p_crawl: solo.id, p_user: b.id }), "not_arranger");
+    expect(ok(await b.c.rpc("set_route_locked", { p_crawl: solo.id, p_locked: true }).single<TestCrawl>()).route_locked).toBe(true);
+  });
+});
+
+// Rettet i 0014: koden kunne gættes uden loft.
+describe("forkerte koder", () => {
+  it("højst 10 på ti minutter, og så afvises også en rigtig kode", async () => {
+    const e = freshUser();
+    if (!e) return;
+    // 0 er ikke med i kodernes alfabet, så de her koder findes aldrig.
+    for (let i = 0; i < 10; i++) {
+      expect(ok(await e.c.rpc("crawl_preview", { p_code: `Z0000${i}` }))).toEqual([]);
+    }
+    denied(await e.c.rpc("crawl_preview", { p_code: "ZZZZZZ" }), "rate_limited");
+    denied(await e.c.rpc("crawl_preview", { p_code: crawl.code }), "rate_limited");
+    denied(await e.c.rpc("join_crawl", { p_code: crawl.code, p_member_name: e.name }), "rate_limited");
   });
 });
 
