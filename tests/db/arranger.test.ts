@@ -137,11 +137,10 @@ describe("transfer_arranger", () => {
   });
 });
 
-// Fejl fundet af testene: før 0013_db_fixes.sql bliver turen uden arrangør på holdet. En låst rute kan
-// aldrig låses op igen, og den, der er gået, kan stadig låse ruten. Testene er markeret med it.fails,
-// indtil migrationen er kørt. Kør supabase/migrations/0013_db_fixes.sql, og skift så it.fails til it.
-describe("når arrangøren går hjem (kræver 0013_db_fixes.sql)", () => {
-  it.fails("går rollen videre til den, der har været længst på holdet", async () => {
+// Fejl fundet af testene og rettet i 0013_db_fixes.sql: før den blev turen uden arrangør på holdet,
+// så en låst rute aldrig kunne låses op igen, og den, der var gået, stadig kunne låse ruten.
+describe("når arrangøren går hjem", () => {
+  it("går rollen videre til den, der har været længst på holdet", async () => {
     // c kommer med igen på den nye kode, så der er to tilbage, når b går.
     ok(await c.c.rpc("join_crawl", { p_code: crawl.code, p_member_name: c.name }).single());
     await leave(crawl, b);
@@ -150,7 +149,7 @@ describe("når arrangøren går hjem (kræver 0013_db_fixes.sql)", () => {
     expect(ok(await lock(a, false)).route_locked).toBe(false);
   });
 
-  it.fails("den, der er gået, kan ikke rette noget", async () => {
+  it("den, der er gået, kan ikke rette noget", async () => {
     noRows(await b.c.from("stops").update({ name: "Snyd" }).eq("id", stop.id).select());
     denied(await b.c.rpc("set_route_locked", { p_crawl: crawl.id, p_locked: true }), "not_arranger");
   });
