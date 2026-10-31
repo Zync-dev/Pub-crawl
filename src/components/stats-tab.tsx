@@ -5,6 +5,7 @@ import { DRINK_BY_KIND, DRINK_KINDS, formatUnits } from "@/lib/drinks";
 import { kindTotals, memberStats, stopTotals } from "@/lib/stats";
 import type { Drink, DrinkKind, Member, Stop } from "@/lib/types";
 import { Avatar, Badge, Card, Icon, SectionTitle } from "./ds";
+import { BestPub } from "./reviews/best-pub"; // pub-reviews
 
 export function StatsTab({
   members,
@@ -103,6 +104,9 @@ export function StatsTab({
           })}
         </ol>
       </section>
+
+      {/* pub-reviews: aftenens bedste pub efter holdets stjerner */}
+      {stops.length > 0 && <BestPub crawlId={stops[0].crawl_id} stops={stops} />}
 
       <section>
         <SectionTitle eyebrow="Hele holdet" title="Hvad drikker vi?" />
