@@ -47,7 +47,6 @@ function useRoundsContext() {
 
 export function RoundsProvider({
   crawlId,
-  crawlCode,
   userId,
   members,
   stops,
@@ -55,8 +54,6 @@ export function RoundsProvider({
   children,
 }: {
   crawlId: string;
-  // wiring: til linket i push-beskeden.
-  crawlCode?: string;
   userId: string;
   members: Member[];
   stops: Stop[];
@@ -130,10 +127,8 @@ export function RoundsProvider({
         },
       },
     });
-    void notifyCrew(crawlId, "round", data.id, {
-      title: `Omgangen er på ${buyer.name}`,
-      url: crawlCode ? `/t/${crawlCode}` : undefined,
-    });
+    // Serveren skriver selv "Omgangen er på …" ud fra omgangen.
+    void notifyCrew(crawlId, "round", data.id);
     return true;
   }
 

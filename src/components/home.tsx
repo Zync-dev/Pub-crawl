@@ -102,7 +102,7 @@ export function Home() {
 
       <div className="pc-enter mx-auto flex w-full max-w-sm flex-col gap-4" style={{ animationDelay: "80ms" }}>
         {/* pwa-push: guide til hjemmeskærmen */}
-        <InstallCard tone="dark" />
+        <InstallCard tone="dark" when={recent.length ? "joined" : "before"} dismissible />
 
         {recent.length > 0 && (
           <div className="flex flex-col gap-2">

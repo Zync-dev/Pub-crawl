@@ -18,7 +18,7 @@ export function StatusScreen({
   actions?: ReactNode;
 }) {
   return (
-    <main className="pc-on-dark flex min-h-dvh flex-1 flex-col bg-green-800 px-4 pb-[max(32px,env(safe-area-inset-bottom))] pt-[max(48px,env(safe-area-inset-top))]">
+    <main className="flex min-h-dvh flex-1 flex-col bg-green-800 px-4 pb-[max(32px,env(safe-area-inset-bottom))] pt-[max(48px,env(safe-area-inset-top))]">
       <div className="pc-fade-in flex flex-1 items-center justify-center py-6">
         <Logo size={0.8} />
       </div>

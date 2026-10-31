@@ -135,9 +135,8 @@ function AtPub({
         if (began && (await closeUnansweredRollCall(crawl.id, stop.id, userId))) void rollCall.refetch();
       });
     // offline-undo: leave() giver true, når Videre er gemt. Først da får holdet besked og opråb.
-    if (!(await actions.leave(undone))) return;
-    // pwa-push: de andre får besked om, at holdet går videre.
-    notifyMove(crawl, stop, following);
+    // pwa-push: de andre får besked om, at holdet går videre, når Fortryd ikke længere kan trykkes.
+    if (!(await actions.leave(undone, () => notifyMove(crawl, stop)))) return;
     // Er alle med? (rollcall): tæl holdet, når I går videre.
     started = rollCall.start(stop.id, following?.id ?? null);
   }

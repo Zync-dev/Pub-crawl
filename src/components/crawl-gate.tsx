@@ -9,6 +9,7 @@ import type { Crawl } from "@/lib/types";
 import { AskProvider } from "./ask";
 import { CrawlApp } from "./crawl-app";
 import { Button, Input, Logo, Spinner } from "./ds";
+import { InstallCard } from "./install-card";
 
 type State =
   | { step: "loading" }
@@ -114,15 +115,19 @@ export function CrawlGate({ code }: { code: string }) {
         </Panel>
       )}
       {state.step === "invite" && (
-        <JoinForm
-          code={code}
-          crawlName={state.name}
-          memberCount={state.memberCount}
-          onJoined={(crawl) => {
-            rememberCrawl({ code: crawl.code, name: crawl.name, id: crawl.id });
-            setState({ step: "ready", crawl, userId: state.userId });
-          }}
-        />
+        <div className="flex flex-col gap-4">
+          {/* pwa-push: på iPhone er appen på hjemmeskærmen en anden person end Safari, så den lægges der først. */}
+          <InstallCard tone="dark" when="before" code={code} />
+          <JoinForm
+            code={code}
+            crawlName={state.name}
+            memberCount={state.memberCount}
+            onJoined={(crawl) => {
+              rememberCrawl({ code: crawl.code, name: crawl.name, id: crawl.id });
+              setState({ step: "ready", crawl, userId: state.userId });
+            }}
+          />
+        </div>
       )}
     </Splash>
   );
@@ -140,9 +145,10 @@ export function CrawlLoading() {
   );
 }
 
+// Kun det grønne er "på mørk baggrund". Knapperne i det cremefarvede kort har deres normale farver.
 function Splash({ children }: { children: ReactNode }) {
   return (
-    <main className="pc-on-dark flex min-h-dvh flex-1 flex-col bg-green-800 px-5 pb-[max(32px,env(safe-area-inset-bottom))] pt-[max(48px,env(safe-area-inset-top))]">
+    <main className="flex min-h-dvh flex-1 flex-col bg-green-800 px-5 pb-[max(32px,env(safe-area-inset-bottom))] pt-[max(48px,env(safe-area-inset-top))]">
       <div className="pc-fade-in flex flex-1 items-center justify-center py-6">
         <Logo size={0.8} />
       </div>

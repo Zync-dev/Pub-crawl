@@ -96,14 +96,17 @@ export async function enablePush(): Promise<PushResult> {
   }
 }
 
+// Sletter først abonnementet på serveren. Lykkes det ikke (fx uden net), beholdes det også på telefonen,
+// så kontakten og virkeligheden passer sammen.
 export async function disablePush() {
   const sub = await currentSubscription();
   if (!sub) return true;
   const { error } = await getSupabase().from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+  if (error) return false;
   try {
     await sub.unsubscribe();
   } catch {}
-  return !error;
+  return true;
 }
 
 // Gemmer abonnementet igen, når appen åbnes. Det fanger nye endpoints og en ny anonym bruger på samme telefon.
@@ -113,21 +116,29 @@ export async function syncPush() {
   if (sub) await save(sub);
 }
 
-export type CrewMessage = { title: string; body?: string; url?: string };
+export type CrewKind = "timer" | "move" | "rollcall" | "round";
 
-// Sender en besked til holdet. Databasen sørger for, at den samme (kind, key) kun sendes én gang pr. tur,
-// så alle åbne telefoner trygt kan kalde den. Fejl ignoreres: beskeden er en ekstra, ikke det vigtige.
-export async function notifyCrew(crawlId: string, kind: string, key: string, message: CrewMessage) {
-  if (!VAPID_PUBLIC_KEY) return;
+// Svar, hvor et nyt forsøg ikke hjælper: afvist for godt. 2xx er sendt, også når en anden telefon nåede det først.
+const FINAL = new Set([400, 403, 413]);
+
+// Beder serveren om at give holdet besked om noget, der er sket (kind + key). Serveren skriver selv teksten
+// ud fra turen, og databasen sender den samme (kind, key) én gang pr. tur, så alle åbne telefoner trygt kan kalde den.
+// Giver true, når der ikke skal prøves igen, og false ved intet net, udløbet login, "ikke endnu" og serverfejl.
+// Den kaster aldrig: beskeden er en ekstra, ikke det vigtige.
+export async function notifyCrew(crawlId: string, kind: CrewKind, key: string): Promise<boolean> {
+  if (!VAPID_PUBLIC_KEY) return true;
   try {
     const { data } = await getSupabase().auth.getSession();
     const token = data.session?.access_token;
-    if (!token) return;
-    await fetch("/api/push", {
+    if (!token) return false;
+    const res = await fetch("/api/push", {
       method: "POST",
       keepalive: true,
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ crawlId, kind, key, ...message }),
+      body: JSON.stringify({ crawlId, kind, key }),
     });
-  } catch {}
+    return res.ok || FINAL.has(res.status);
+  } catch {
+    return false;
+  }
 }

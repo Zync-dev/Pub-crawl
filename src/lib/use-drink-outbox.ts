@@ -20,6 +20,7 @@ import {
   retryable,
   type OutboxEntry,
   type Settled,
+  undoneLater,
   waitingCount,
   waitingDrinkIds,
 } from "./drink-outbox";
@@ -154,6 +155,11 @@ export function useDrinkOutbox(
       while (queue.current.length) {
         const entry = queue.current[0];
         const k = entryKey(entry);
+        // Fortrudt, mens den var på vej op: kun sletningen sendes.
+        if (undoneLater(queue.current, 0)) {
+          commit(queue.current.filter((e) => entryKey(e) !== k));
+          continue;
+        }
         inFlight.current = k;
         const slow = setTimeout(() => markWaiting(k), SLOW_MS);
         const { result, drink } = await send(entry);

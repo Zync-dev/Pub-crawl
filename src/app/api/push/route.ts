@@ -4,24 +4,22 @@ import { isPushEndpoint } from "@/lib/push-endpoint";
 
 // Sender en besked til holdet. Kaldes af appen med brugerens egen adgangsnøgle. Ruten tjekker nøglen
 // og spørger så databasen med serverens hemmelige nøgle, så modtagernes endpoints og nøgler aldrig
-// når en browser. Databasen tjekker, at man er med på turen, og at beskeden ikke er sendt før.
+// når en browser. Appen siger kun, hvad der er sket (kind og key). Databasen (crew_push) tjekker, at det
+// faktisk er sket, at man er med på turen, og at beskeden ikke er sendt før, og skriver selv titel, tekst
+// og link. Så kan ingen sende en falsk besked.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const KIND = /^[a-z_]{1,20}$/;
+const KINDS = new Set(["timer", "move", "rollcall", "round"]);
 // Kun stier i appen, så en besked aldrig kan sende nogen ud på en fremmed side.
 const PATH = /^\/(?!\/)[A-Za-z0-9\-._~/?=&%]{0,199}$/;
 // Et hold på 30 med fem apparater hver er 150. Ingen besked skal ud til flere end det.
 const MAX_TARGETS = 150;
 
-type Body = { crawlId: string; kind: string; key: string; title: string; body: string; url: string };
-type Target = { endpoint: string; p256dh: string; auth: string };
+type Body = { crawlId: string; kind: string; key: string };
+type Target = { endpoint: string; p256dh: string; auth: string; title: string; body: string; url: string };
 
 function fail(status: number, error: string) {
   return Response.json({ error }, { status });
-}
-
-function text(value: unknown, max: number) {
-  return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
 function parse(raw: unknown): Body | null {
@@ -30,11 +28,8 @@ function parse(raw: unknown): Body | null {
   const crawlId = typeof r.crawlId === "string" ? r.crawlId : "";
   const kind = typeof r.kind === "string" ? r.kind : "";
   const key = typeof r.key === "string" ? r.key : "";
-  const title = text(r.title, 80);
-  const body = text(r.body, 200);
-  const url = typeof r.url === "string" && r.url ? r.url : "/";
-  if (!UUID.test(crawlId) || !KIND.test(kind) || !key || key.length > 200 || !title || !PATH.test(url)) return null;
-  return { crawlId, kind, key, title, body, url };
+  if (!UUID.test(crawlId) || !KINDS.has(kind) || !key || key.length > 200) return null;
+  return { crawlId, kind, key };
 }
 
 export async function POST(request: Request) {
@@ -70,7 +65,7 @@ export async function POST(request: Request) {
   const { data: who, error: authError } = await supabase.auth.getUser(token);
   if (authError || !who.user) return fail(401, "not_authenticated");
 
-  const { data, error } = await supabase.rpc("push_targets", {
+  const { data, error } = await supabase.rpc("crew_push", {
     p_crawl: input.crawlId,
     p_kind: input.kind,
     p_key: input.key,
@@ -80,6 +75,8 @@ export async function POST(request: Request) {
     const message = error.message ?? "";
     if (message.includes("not_member")) return fail(403, "not_member");
     if (message.includes("rate_limited")) return fail(429, "rate_limited");
+    // Timeren er ikke gået endnu (telefonens ur kan gå lidt forkert). Appen prøver igen.
+    if (message.includes("not_due")) return fail(409, "not_due");
     if (message.includes("invalid_notification")) return fail(400, "invalid_input");
     if (message.includes("not_authenticated")) return fail(401, "not_authenticated");
     return fail(500, "push_failed");
@@ -88,10 +85,12 @@ export async function POST(request: Request) {
   const targets = ((data ?? []) as Target[]).filter((t) => isPushEndpoint(t.endpoint)).slice(0, MAX_TARGETS);
   if (!targets.length) return Response.json({ sent: 0, dropped: 0 });
 
+  // Teksten er den samme i alle rækker. Databasen har skrevet den.
+  const { title, body, url } = targets[0];
   const payload = JSON.stringify({
-    title: input.title,
-    body: input.body,
-    url: input.url,
+    title,
+    body,
+    url: PATH.test(url) ? url : "/",
     tag: `${input.kind}:${input.crawlId}`,
   });
   const options: webpush.RequestOptions = {

@@ -1,9 +1,9 @@
-// Push-beskeder (0003, 0014): abonnementer, push_targets og drop_push_endpoints.
-// push_targets og drop_push_endpoints kan kun kaldes med den hemmelige nøgle (som /api/push).
+// Push-beskeder (0003, 0014, 0017): abonnementer, crew_push og drop_push_endpoints.
+// crew_push og drop_push_endpoints kan kun kaldes med den hemmelige nøgle (som /api/push).
 // De test kører kun, når SUPABASE_SECRET_KEY står i .env.local.
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { anon, denied, leave, newCrawl, noRows, ok, service, users, uuid, type TestCrawl, type TestUser } from "./helpers";
+import type { Stop } from "@/lib/types";
+import { addStop, anon, denied, leave, newCrawl, noRows, ok, service, users, uuid, type TestCrawl, type TestUser } from "./helpers";
 
 let a: TestUser, b: TestUser, o: TestUser;
 let crawl: TestCrawl;
@@ -21,13 +21,16 @@ async function mine(u: TestUser) {
   return ok(await u.c.from("push_subscriptions").select("endpoint, user_id")).map((r) => r.endpoint).sort();
 }
 
-function targets(c: SupabaseClient, u: TestUser, kind: string, key: string) {
-  return c.rpc("push_targets", { p_crawl: crawl.id, p_kind: kind, p_key: key, p_user: u.id });
+type CrewRow = { endpoint: string; title: string; body: string; url: string };
+
+// Som /api/push: den hemmelige nøgle og afsenderens id.
+async function crew(u: TestUser, kind: string, key: string) {
+  const res = await admin!.rpc("crew_push", { p_crawl: crawl.id, p_kind: kind, p_key: key, p_user: u.id });
+  return res as { data: CrewRow[] | null; error: { message: string } | null };
 }
 
-async function targetEndpoints(u: TestUser, kind: string, key: string) {
-  return ok(await targets(admin!, u, kind, key)).map((r: { endpoint: string }) => r.endpoint).sort();
-}
+// Samme nøgle som deadlineKey i use-crew-notifications.ts: pub og tidspunktet, hvor 5 minutter er gået.
+const deadline = (stopId: string, arrivedAt: string) => `${stopId}:${new Date(arrivedAt).getTime() + 5 * 60_000}`;
 
 const ep: Record<"a" | "b" | "o", string> = { a: "", b: "", o: "" };
 const runKey = uuid().slice(0, 8);
@@ -109,50 +112,96 @@ describe("push_subscriptions og save_push_subscription", () => {
   });
 });
 
-describe("push_targets og drop_push_endpoints fra browseren", () => {
+describe("crew_push, push_targets og drop_push_endpoints fra browseren", () => {
   it("kan hverken kaldes af holdet, udefra eller uden login", async () => {
     for (const c of [a.c, o.c, anon()]) {
-      denied(await targets(c, a, "move", `${runKey}:browser`));
+      denied(await c.rpc("crew_push", { p_crawl: crawl.id, p_kind: "rollcall", p_key: uuid(), p_user: a.id }));
+      denied(await c.rpc("push_targets", { p_crawl: crawl.id, p_kind: "move", p_key: `${runKey}:browser`, p_user: a.id }));
       denied(await c.rpc("drop_push_endpoints", { p_crawl: crawl.id, p_endpoints: [ep.b] }));
     }
     expect(await mine(b)).toEqual([ep.b]);
   });
 });
 
-describe.skipIf(!admin)("push_targets med den hemmelige nøgle", () => {
-  it("giver de andre på holdet, men ikke afsenderen eller folk uden for turen", async () => {
-    expect(await targetEndpoints(a, "move", `${runKey}:1`)).toEqual([ep.b]);
+// crew_push (0017): databasen tjekker, at det er sket, og skriver selv teksten.
+describe.skipIf(!admin)("crew_push med den hemmelige nøgle", () => {
+  let stop: Stop;
+
+  beforeAll(async () => {
+    stop = ok(await addStop(b, crawl.id, "Test pub", 0));
+    ok(await b.c.from("stops").update({ minutes: 5 }).eq("id", stop.id));
   });
 
-  it("sender den samme besked én gang, også når en anden prøver", async () => {
-    expect(await targetEndpoints(a, "move", `${runKey}:1`)).toEqual([]);
-    expect(await targetEndpoints(b, "move", `${runKey}:1`)).toEqual([]);
+  it("afviser folk uden for turen, uden login og ukendte slags", async () => {
+    denied(await crew(o, "rollcall", uuid()), "not_member");
+    denied(await anon().rpc("crew_push", { p_crawl: crawl.id, p_kind: "rollcall", p_key: uuid() }));
+    denied(await crew(a, "hello", "x"), "invalid_notification");
+    denied(await crew(a, "rollcall", "x".repeat(201)), "invalid_notification");
   });
 
-  it("sender timeren til alle, også afsenderen", async () => {
-    expect(await targetEndpoints(b, "timer", `${runKey}:1`)).toEqual([ep.a, ep.b].sort());
-    expect(await targetEndpoints(a, "timer", `${runKey}:1`)).toEqual([]);
+  it("sender et opråb, som afsenderen selv har startet, til de andre én gang", async () => {
+    const call = ok(await a.c.rpc("start_roll_call", { p_crawl: crawl.id }).single<{ id: string }>());
+    denied(await crew(b, "rollcall", call.id), "invalid_notification");
+    const rows = ok(await crew(a, "rollcall", call.id));
+    expect(rows.map((r) => r.endpoint)).toEqual([ep.b]);
+    expect(rows[0]).toMatchObject({ title: "Er alle med?", url: `/t/${crawl.code}` });
+    expect(ok(await crew(a, "rollcall", call.id))).toEqual([]);
+    denied(await crew(a, "rollcall", uuid()), "invalid_notification");
   });
 
-  it("afviser folk uden for turen og en manglende bruger", async () => {
-    denied(await targets(admin!, o, "move", `${runKey}:2`), "not_member");
+  it("afviser en manglende bruger", async () => {
     denied(
-      await admin!.rpc("push_targets", { p_crawl: crawl.id, p_kind: "move", p_key: `${runKey}:2`, p_user: null }),
+      await admin!.rpc("crew_push", { p_crawl: crawl.id, p_kind: "rollcall", p_key: uuid(), p_user: null }),
       "not_authenticated",
     );
   });
 
-  it("afviser en ugyldig slags eller nøgle", async () => {
-    denied(await targets(admin!, a, "Move!", `${runKey}:3`), "invalid_notification");
-    denied(await targets(admin!, a, "move", ""), "invalid_notification");
-    denied(await targets(admin!, a, "move", "x".repeat(201)), "invalid_notification");
+  it("sender en omgang med giverens navn", async () => {
+    const round = ok(await a.c.from("rounds").insert({ crawl_id: crawl.id, buyer_id: b.id }).select("id").single<{ id: string }>());
+    denied(await crew(b, "round", round.id), "invalid_notification");
+    const rows = ok(await crew(a, "round", round.id));
+    expect(rows.map((r) => r.endpoint)).toEqual([ep.b]);
+    expect(rows[0].title).toBe("Omgangen er på Test B");
+  });
+
+  it("sender timeren til alle, men kun når tiden ved pubben er gået", async () => {
+    const now = new Date().toISOString();
+    ok(await b.c.from("crawls").update({ current_stop_id: stop.id, arrived_at: now }).eq("id", crawl.id));
+    denied(await crew(b, "timer", deadline(stop.id, now)), "not_due");
+    const early = new Date(Date.now() - 6 * 60_000).toISOString();
+    ok(await b.c.from("crawls").update({ arrived_at: early }).eq("id", crawl.id));
+    denied(await crew(b, "timer", deadline(stop.id, now)), "invalid_notification");
+    const rows = ok(await crew(b, "timer", deadline(stop.id, early)));
+    expect(rows.map((r) => r.endpoint).sort()).toEqual([ep.a, ep.b].sort());
+    expect(rows[0].title).toBe("Sidste omgang på Test pub");
+    expect(ok(await crew(a, "timer", deadline(stop.id, early)))).toEqual([]);
+  });
+
+  it("sender Videre først, når holdet har forladt pubben", async () => {
+    const key = `${stop.id}:${Date.now()}`;
+    denied(await crew(a, "move", key), "invalid_notification");
+    ok(await b.c.from("stops").update({ visited_at: new Date().toISOString() }).eq("id", stop.id));
+    ok(await b.c.from("crawls").update({ current_stop_id: null, arrived_at: null }).eq("id", crawl.id));
+    denied(await crew(a, "move", `${uuid()}:1`), "invalid_notification");
+    const rows = ok(await crew(a, "move", key));
+    expect(rows.map((r) => r.endpoint)).toEqual([ep.b]);
+    expect(rows[0]).toMatchObject({ title: "Holdet går videre", body: "Ruten er gået. Test pub var sidste pub." });
+    expect(ok(await crew(b, "move", key))).toEqual([]);
   });
 
   it("loggen kan læses af holdet, men ikke skrives eller ses udefra", async () => {
-    const log = ok(await b.c.from("notifications_sent").select("kind, key").eq("crawl_id", crawl.id));
-    expect(log.map((r) => `${r.kind}:${r.key}`).sort()).toEqual([`move:${runKey}:1`, `timer:${runKey}:1`]);
+    const log = ok(await b.c.from("notifications_sent").select("kind").eq("crawl_id", crawl.id));
+    expect(log.map((r) => r.kind).sort()).toEqual(["move", "round", "rollcall", "timer"].sort());
     expect(ok(await o.c.from("notifications_sent").select("kind").eq("crawl_id", crawl.id))).toEqual([]);
     denied(await a.c.from("notifications_sent").insert({ crawl_id: crawl.id, kind: "move", key: `${runKey}:x` }));
+  });
+
+  it("tager højst seks beskeder i minuttet fra den samme afsender", async () => {
+    // a har sendt tre (opråb, omgang, Videre). De næste tre går igennem, nr. 7 afvises.
+    for (let i = 0; i < 3; i++) ok(await crew(a, "move", `${stop.id}:${i}`));
+    denied(await crew(a, "move", `${stop.id}:9`), "rate_limited");
+    // Loftet er pr. afsender, så b kan stadig sende.
+    ok(await crew(b, "move", `${stop.id}:9`));
   });
 });
 
@@ -175,10 +224,3 @@ describe.skipIf(!admin)("drop_push_endpoints med den hemmelige nøgle", () => {
   });
 });
 
-describe.skipIf(!admin)("loftet for beskeder", () => {
-  it("tillader 20 beskeder i minuttet pr. tur", async () => {
-    // To er allerede sendt i denne tur (move og timer). De næste 18 går igennem, nr. 21 afvises.
-    for (let i = 0; i < 18; i++) ok(await targets(admin!, a, "move", `${runKey}:burst:${i}`));
-    denied(await targets(admin!, a, "move", `${runKey}:burst:last`), "rate_limited");
-  });
-});
