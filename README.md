@@ -8,7 +8,7 @@ En lille app til mig og mine venner til J-dag fredag den 6. november 2026. Den s
 2. **Statistik**: hvor meget og hvad hver af os har drukket, i genstande, pr. drik og pr. pub.
 3. **Holdet**: man starter en tur og deler et link eller en kode på 6 tegn. Alle på turen kan se hinandens drinks.
 4. **Live-position**: man kan selv slå deling til. Kun dem på turen kan se den, og den slettes, når man slår det fra.
-5. **Timer pr. pub**: starter, når I trykker "Vi er her". Den kan forlænges med 10 minutter og vibrerer, når tiden er gået.
+5. **Timer pr. pub**: starter, når I trykker "Tjek ind". Den kan forlænges med 10 minutter og vibrerer, når tiden er gået.
 6. **Udfordringer**: en tilfældig opgave, hver gang I ankommer til en pub.
 
 ## Teknik
