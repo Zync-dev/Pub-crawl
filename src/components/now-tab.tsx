@@ -8,6 +8,7 @@ import type { Crawl, Drink, DrinkKind, Stop } from "@/lib/types";
 import { useAsk } from "./ask";
 import type { CrawlActions } from "./crawl-app";
 import { Button, Card, Icon, SectionTitle } from "./ds";
+import { ChallengeVoting } from "./games/challenge-voting";
 
 export function NowTab({
   crawl,
@@ -138,6 +139,8 @@ function AtPub({
             Udfordring
           </p>
           <p className="font-serif text-[24px] leading-[1.15]">{crawl.challenge}</p>
+          {/* games: Klaret / Ikke klaret */}
+          <ChallengeVoting challengeId={crawl.current_challenge_id} text={crawl.challenge} />
           <div>
             <Button variant="ghost" size="sm" icon="dices" onClick={() => void actions.newChallenge()}>
               Træk en ny

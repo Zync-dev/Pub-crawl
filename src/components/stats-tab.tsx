@@ -5,6 +5,7 @@ import { DRINK_BY_KIND, DRINK_KINDS, formatUnits } from "@/lib/drinks";
 import { kindTotals, memberStats, stopTotals } from "@/lib/stats";
 import type { Drink, DrinkKind, Member, Stop } from "@/lib/types";
 import { Avatar, Badge, Card, Icon, SectionTitle } from "./ds";
+import { ChallengeRanking } from "./games/challenge-ranking";
 
 export function StatsTab({
   members,
@@ -28,11 +29,13 @@ export function StatsTab({
 
   if (!drinks.length) {
     return (
-      <div className="px-4 py-[18px]">
+      <div className="flex flex-col gap-6 px-4 py-[18px]">
         <Card variant="framed" className="text-center">
           <p className="pc-label mb-2 text-oxblood-700">Ingen omgange endnu</p>
           <p className="text-muted">Når I skriver drinks ind under Nu, kommer stillingen her.</p>
         </Card>
+        {/* games: udfordringspoint */}
+        <ChallengeRanking />
       </div>
     );
   }
@@ -126,6 +129,9 @@ export function StatsTab({
             ))}
         </Card>
       </section>
+
+      {/* games: udfordringspoint */}
+      <ChallengeRanking />
 
       {perStop.length > 0 && (
         <section>

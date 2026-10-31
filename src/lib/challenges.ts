@@ -32,11 +32,15 @@ export const CHALLENGES = [
   "Fri runde! Nyd det.",
 ];
 
-export function drawChallenge(names: string[], previous?: string | null) {
+// Returnerer også, hvem der blev trukket til {navn}, så udfordringen kan give point til dem.
+// target er null, når skabelonen ikke har {navn} (en udfordring for hele holdet).
+export function drawChallenge<T extends { name: string }>(
+  people: T[],
+  previous?: string | null,
+): { text: string; target: T | null } {
   const pool = CHALLENGES.filter((c) => c !== previous);
   const template = pool[Math.floor(Math.random() * pool.length)];
-  const name = names.length
-    ? names[Math.floor(Math.random() * names.length)]
-    : "Den yngste";
-  return template.replaceAll("{navn}", name);
+  if (!template.includes("{navn}")) return { text: template, target: null };
+  const target = people.length ? people[Math.floor(Math.random() * people.length)] : null;
+  return { text: template.replaceAll("{navn}", target?.name ?? "Den yngste"), target };
 }
