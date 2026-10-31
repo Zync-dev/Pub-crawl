@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { removeRound, sortRounds, upsertRound, type Round } from "./rounds";
+import { liveTopic } from "./realtime";
 import { getSupabase } from "./supabase";
 
 // Henter turens omgange og holder dem opdateret med deres egen Realtime-kanal.
@@ -24,7 +25,7 @@ export function useRounds(crawlId: string) {
   useEffect(() => {
     const supabase = getSupabase();
     const channel = supabase
-      .channel(`rounds:${crawlId}`)
+      .channel(liveTopic("rounds", crawlId))
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "rounds", filter: `crawl_id=eq.${crawlId}` },

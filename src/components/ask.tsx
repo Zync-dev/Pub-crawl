@@ -184,6 +184,10 @@ export function AskProvider({ children }: { children: ReactNode }) {
           </form>
         )}
       </Dialog>
+      {/* Én live region, der altid er der. Kun teksten skiftes, så skærmlæsere når at læse den. */}
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {toast && !toast.leaving ? (toast.action ? `${toast.message}. Knap: ${toast.action.label}.` : toast.message) : ""}
+      </div>
       {toast && (
         <div
           key={toast.id}

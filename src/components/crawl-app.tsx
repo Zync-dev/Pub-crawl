@@ -1,15 +1,16 @@
 "use client";
 
-import { Dices } from "lucide-react";
+import { CloudOff, Dices } from "lucide-react";
 import Link from "next/link";
-import { useRef, useState } from "react";
-import { insertChallenge } from "@/lib/challenge-rows";
-import { drawChallenge } from "@/lib/challenges";
-import { DRINK_BY_KIND, formatUnits } from "@/lib/drinks";
+import { useEffect, useRef, useState } from "react";
+import { arrangerErrorText } from "@/lib/arranger";
+import { DRINK_BY_KIND, formatGenstande } from "@/lib/drinks";
 import { distanceMeters, formatDistance } from "@/lib/geo";
+import { formatPubs, nextStopOnRoute } from "@/lib/route";
 import { getSupabase } from "@/lib/supabase";
+import { once } from "@/lib/undo-fields";
 import { formatClock, formatTime, remainingMs } from "@/lib/timer";
-import type { Crawl, Drink, DrinkKind, LatLng, Member, Stop } from "@/lib/types";
+import type { Crawl, Drink, DrinkKind, LatLng, Stop } from "@/lib/types";
 import { useArranger } from "@/lib/use-arranger"; // arranger
 import { useCrawl, useNow } from "@/lib/use-crawl";
 import { useCrewNotifications, useRollCallNotification } from "@/lib/use-crew-notifications";
@@ -45,9 +46,9 @@ export type CrawlActions = ReturnType<typeof useActions>;
 function useActions(
   crawl: Crawl,
   stops: Stop[],
-  members: Member[],
   userId: string,
   patch: ReturnType<typeof useCrawl>["patch"],
+  refetch: ReturnType<typeof useCrawl>["refetch"],
   // offline-undo: drinks går gennem køen, og Tjek ind, Videre og Fjern pub kan fortrydes.
   outbox: DrinkOutbox,
   undoable: UndoableActions,
@@ -57,16 +58,15 @@ function useActions(
   const id = crawl.id;
 
   // Skriver fejl ud som en toast, så ingen tror, at noget er gemt, når det ikke er.
+  // Det, vi viste på forhånd, rettes ved at hente turen igen, så vi ser det samme som holdet.
   async function run(request: PromiseLike<{ error: unknown }>) {
     const { error } = await request;
-    if (error) ask.toast("Det blev ikke gemt. Tjek forbindelsen.", "danger");
+    if (error) {
+      // Net, eller fx en rute, arrangøren har låst.
+      ask.toast(arrangerErrorText(error), "danger");
+      void refetch();
+    }
     return !error;
-  }
-
-  // games: current_challenge_id skrives kun, når der er noget at skrive, så Nu også virker uden migration 0006.
-  function challengeColumn(challengeId: string | null) {
-    if (challengeId) return { current_challenge_id: challengeId };
-    return crawl.current_challenge_id ? { current_challenge_id: null } : {};
   }
 
   return {
@@ -74,32 +74,9 @@ function useActions(
     // games: udfordringsrækken og current_challenge_id skrives også dér.
     arrive: (stop: Stop) => undoable.arrive(stop),
     leave: (onUndone?: () => void) => undoable.leave(onUndone),
-    async newChallenge() {
-      // games: en ny række for hver udfordring. Den gamle beholder sine stemmer.
-      const drawn = drawChallenge(members, crawl.challenge);
-      const challenge = drawn.text;
-      patch((p) => ({ ...p, crawl: { ...p.crawl, challenge, current_challenge_id: null } }));
-      const challengeId = await insertChallenge(supabase, {
-        crawl_id: id,
-        stop_id: crawl.current_stop_id,
-        text: challenge,
-        target_user_id: drawn.target?.user_id ?? null,
-      });
-      if (challengeId) patch((p) => ({ ...p, crawl: { ...p.crawl, current_challenge_id: challengeId } }));
-      await run(
-        supabase
-          .from("crawls")
-          .update({ challenge, ...challengeColumn(challengeId) })
-          .eq("id", id),
-      );
-    },
-    async extend(minutes: number) {
-      if (!crawl.arrived_at) return;
-      // Forlænger ved at skubbe ankomsttiden, så timeren følger med for alle.
-      const arrived_at = new Date(new Date(crawl.arrived_at).getTime() + minutes * 60_000).toISOString();
-      patch((p) => ({ ...p, crawl: { ...p.crawl, arrived_at } }));
-      await run(supabase.from("crawls").update({ arrived_at }).eq("id", id));
-    },
+    // Med Fortryd, og de tjekker, at turen ikke er ændret imens. Se use-undoable-actions.ts.
+    newChallenge: () => undoable.newChallenge(),
+    extend: (minutes: number) => undoable.extend(minutes),
     async addStop(name: string, at: LatLng) {
       const position = stops.length ? Math.max(...stops.map((s) => s.position)) + 1 : 0;
       const { data, error } = await supabase
@@ -159,8 +136,13 @@ function useActions(
       });
     },
     // offline-undo: venter den stadig, fjernes den bare fra køen. Ellers sættes sletningen i kø.
+    // Fortryd i toasten lægger den samme drink ind igen, med sin tid og sin pub.
     async deleteDrink(drink: Drink) {
       outbox.remove(drink);
+      const label = DRINK_BY_KIND[drink.kind]?.label ?? "Drinken";
+      ask.toast(`${label} er fjernet`, {
+        action: { label: "Fortryd", onClick: once(async () => outbox.restore(drink)) },
+      });
     },
     async rename(name: string) {
       const clean = name.trim().slice(0, 30);
@@ -219,10 +201,23 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
     refetch: data.refetch,
     hold: held.hold,
   });
-  const actions = useActions(crawl, stops, members, userId, data.patch, outbox, undoable);
+  const actions = useActions(crawl, stops, userId, data.patch, data.refetch, outbox, undoable);
   const currentStop = stops.find((s) => s.id === crawl.current_stop_id) ?? null;
-  const nextStop = currentStop ? null : (stops.find((s) => !s.visited_at) ?? null);
+  const nextStop = currentStop ? null : nextStopOnRoute(stops, null);
   const remaining = remainingMs(crawl, currentStop, now);
+  const overtime = remaining !== null && remaining <= 0;
+  // Én vibration pr. ankomst, når tiden er gået. Her og ikke i Nu, så den også kommer på de andre
+  // faner og ikke kommer igen, hver gang man går tilbage til Nu.
+  const buzzed = useRef<string | null>(null);
+  useEffect(() => {
+    if (!overtime || !crawl.arrived_at) return;
+    const key = `${crawl.current_stop_id}:${crawl.arrived_at}`;
+    if (buzzed.current === key) return;
+    buzzed.current = key;
+    try {
+      navigator.vibrate?.([200, 100, 200]);
+    } catch {}
+  }, [overtime, crawl.arrived_at, crawl.current_stop_id]);
   // Er alle med? (rollcall): opråbet deles af Nu, headeren og Videre-flowet via RollCallProvider.
   const rollCall = useRollCallWithToasts(crawl.id, userId, members, now);
   // pwa-push: "Sidste omgang" til holdet, når timeren løber ud.
@@ -243,10 +238,12 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
       <button
         type="button"
         onClick={() => changeTab("now")}
-        aria-label="Gå til timeren"
-        className="rounded-full"
+        aria-label={`${remaining < 0 ? "Tiden er gået" : `${formatClock(remaining)} tilbage`}. Gå til timeren`}
+        className="relative rounded-full"
         style={{ background: "none", border: 0, padding: 0 }}
       >
+        {/* Større trykflade end selve mærket. */}
+        <span aria-hidden className="absolute -inset-x-2 -inset-y-2.5" />
         <Badge tone={remaining < 0 ? "oxblood" : "gold"} icon="timer">
           <span className="tabular-nums">{formatClock(remaining)}</span>
         </Badge>
@@ -257,27 +254,30 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
   const rollCallBadge =
     tab !== "now" && rollCall.open ? <RollCallBadge onOpen={() => changeTab("now")} /> : undefined;
 
-  const headerRight =
-    data.offline || timerBadge || rollCallBadge || outbox.waiting > 0 ? (
-      <div className="flex flex-col items-end gap-1.5">
-        {data.offline && (
-          <span className="pc-fade-in" role="status">
-            <Badge tone="oxblood">Ingen forbindelse</Badge>
-          </span>
-        )}
-        {/* offline-undo: drinks, der venter på net. */}
-        {outbox.waiting > 0 && <OutboxBadge count={outbox.waiting} />}
-        {timerBadge}
-        {rollCallBadge}
-      </div>
-    ) : undefined;
+  // Uden net står det, der venter, i samme mærke, så titlen ikke bliver klemt.
+  const offlineBadge = data.offline ? (
+    <span className="pc-fade-in" role="status">
+      <Badge tone="oxblood" icon={CloudOff}>
+        {outbox.waiting > 0 ? `Ingen net · ${outbox.waiting} venter` : "Ingen net"}
+      </Badge>
+    </span>
+  ) : undefined;
+  // offline-undo: drinks, der venter på net.
+  const outboxBadge = outbox.waiting > 0 ? <OutboxBadge count={outbox.waiting} /> : undefined;
+
+  // Ét mærke ad gangen: opråbet, så forbindelsen, så timeren og til sidst køen.
+  const headerRight = rollCallBadge ?? offlineBadge ?? timerBadge ?? outboxBadge;
 
   const header = (() => {
+    // Før turen er hentet, ved vi ikke, hvor I er. Så hellere bare turens navn.
+    if (!data.loaded) return { eyebrow: `Kode ${crawl.code}`, title: crawl.name };
     if (tab === "now") {
       if (currentStop) {
         const index = stops.indexOf(currentStop);
+        // Ankomsten er pubbens visited_at. arrived_at flytter sig med Én til her.
+        const arrived = currentStop.visited_at ?? crawl.arrived_at;
         return {
-          eyebrow: `Pub ${index + 1} af ${stops.length} · ankom ${crawl.arrived_at ? formatTime(crawl.arrived_at) : ""}`,
+          eyebrow: `Pub ${index + 1} af ${stops.length}${arrived ? ` · ankom ${formatTime(arrived)}` : ""}`,
           title: currentStop.name,
         };
       }
@@ -297,7 +297,7 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
     if (tab === "route") {
       const meters = stops.slice(1).reduce((sum, s, i) => sum + distanceMeters(stops[i], s), 0);
       return {
-        eyebrow: `${crawl.name} · ${stops.length} pubs${stops.length > 1 ? ` · ${formatDistance(meters)}` : ""}`,
+        eyebrow: `${crawl.name} · ${formatPubs(stops.length)}${stops.length > 1 ? ` · ${formatDistance(meters)}` : ""}`,
         title: "Aftenens rute",
       };
     }
@@ -307,7 +307,7 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
     }
     if (tab === "stats") {
       const units = drinks.reduce((sum, d) => sum + Number(d.units), 0);
-      return { eyebrow: `${formatUnits(units)} genstande i alt`, title: "Stillingen" };
+      return { eyebrow: `${formatGenstande(units)} i alt`, title: "Stillingen" };
     }
     return {
       eyebrow: `${members.length} på holdet · kode ${crawl.code}`,
@@ -317,7 +317,14 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
 
   const page = (
     <div className="flex h-dvh flex-col overflow-hidden bg-cream-200">
-      <Header eyebrow={header.eyebrow} title={header.title} left={back} right={headerRight} />
+      {/* På vej skifter afstanden hele tiden. Eyebrowen toner kun ind, når fanen eller pubben skifter. */}
+      <Header
+        eyebrow={header.eyebrow}
+        eyebrowKey={tab === "now" && data.loaded ? `now:${currentStop?.id ?? nextStop?.id ?? ""}` : undefined}
+        title={header.title}
+        left={back}
+        right={headerRight}
+      />
 
       <main ref={scroller} className="min-h-0 flex-1 overflow-y-auto">
         {!data.loaded ? (
@@ -341,6 +348,7 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
                   now={now}
                   actions={actions}
                   onOpenRoute={() => changeTab("route")}
+                  canEditRoute={arranger.canEditRoute}
                   pendingDrinkIds={outbox.waitingIds}
                 />
               </div>

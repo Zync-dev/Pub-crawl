@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addSettled,
+  dropSettled,
   entryKey,
   markSent,
   markWaiting,
@@ -9,6 +10,7 @@ import {
   parseOutbox,
   pruneSettled,
   queueRemoval,
+  queueRestore,
   retryable,
   validEntry,
   waitingCount,
@@ -200,5 +202,33 @@ describe("waitingDrinkIds og waitingCount", () => {
     expect([...waitingDrinkIds(queue)]).toEqual(["a"]);
     expect(waitingCount(queue)).toBe(2);
     expect(waitingCount([])).toBe(0);
+  });
+});
+
+describe("queueRestore", () => {
+  it("dropper en sletning, der ikke er sendt, og lægger den samme drink i køen", () => {
+    expect(queueRestore([del("a")], a, null)).toEqual([insert(a)]);
+  });
+
+  it("lader en sletning, der er på vej, blive og sender drinken bagefter", () => {
+    expect(queueRestore([del("a")], a, "delete:a")).toEqual([del("a"), insert(a)]);
+  });
+
+  it("lægger en drink, der er slettet på serveren, ind igen med samme id og tid", () => {
+    const next = queueRestore([], a, null);
+    expect(next).toEqual([insert(a)]);
+    expect(next?.[0]).toMatchObject({ drink: { id: "a", created_at: a.created_at, stop_id: "s1" } });
+  });
+
+  it("gør intet, når drinken allerede ligger i køen", () => {
+    expect(queueRestore([insert(a)], a, null)).toBeNull();
+  });
+});
+
+describe("dropSettled", () => {
+  it("fjerner skjulningen af en slettet drink og giver samme liste, når der intet er", () => {
+    const list = addSettled([], "a", null, 10);
+    expect(dropSettled(list, "a")).toEqual([]);
+    expect(dropSettled(list, "b")).toBe(list);
   });
 });

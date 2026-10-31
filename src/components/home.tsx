@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useState, type FormEvent } from "react";
 import { readName, saveName } from "@/lib/name";
 import { readRecent, rememberCrawl, type RecentCrawl } from "@/lib/recent";
 import { ensureUser, errorText, getSupabase, supabaseConfigured } from "@/lib/supabase";
@@ -43,15 +43,30 @@ export function Home() {
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
+  // Next gemmer forsiden i <Activity>, når man går ind på en tur. Kommer man tilbage, skal
+  // knapperne ikke stadig vente på den tur, man åbnede sidst.
+  useLayoutEffect(() => {
+    return () => {
+      setBusy(false);
+      setJoining(false);
+      setOpening(null);
+    };
+  }, []);
+
   async function start(e: FormEvent) {
     e.preventDefault();
+    const member = name.trim();
+    const title = crawlName.trim();
+    // Kun mellemrum kommer forbi required, men databasen vil have et navn.
+    if (!title) return setError("Giv turen et navn.");
+    if (!member) return setError("Skriv dit navn.");
     setBusy(true);
     setError(null);
     try {
       await ensureUser();
-      saveName(name);
+      saveName(member);
       const { data, error } = await getSupabase()
-        .rpc("create_crawl", { p_name: crawlName, p_member_name: name })
+        .rpc("create_crawl", { p_name: title, p_member_name: member })
         .single<Crawl>();
       if (error || !data) throw error;
       rememberCrawl({ code: data.code, name: data.name });

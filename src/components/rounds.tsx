@@ -221,7 +221,8 @@ export function NextRoundCard() {
           </div>
         )}
 
-        <Button variant="gold" size="lg" icon={Beer} fullWidth loading={busy} onClick={() => void record()}>
+        {/* Én guldknap ad gangen i Nu: Tjek ind, Videre eller Jeg er med. Omgangen er sekundær. */}
+        <Button variant="secondary" size="lg" icon={Beer} fullWidth loading={busy} onClick={() => void record()}>
           {name} giver
         </Button>
       </Card>

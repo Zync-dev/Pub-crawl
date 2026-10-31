@@ -27,6 +27,25 @@ export function crawlRow(fields: CrawlFields, replacing: CrawlFields) {
   return current_challenge_id || replacing.current_challenge_id ? { ...rest, current_challenge_id } : rest;
 }
 
+// Felterne, en skrivning tjekker, før den skriver: turen skal stadig se ud, som telefonen så den.
+// Ellers skriver en telefon med et forældet billede oven i det, holdet lige har gjort.
+export const ARRIVAL = ["current_stop_id", "arrived_at"] as const satisfies (keyof CrawlFields)[];
+export const CHALLENGE = [...ARRIVAL, "challenge"] as const satisfies (keyof CrawlFields)[];
+
+// [kolonne, værdi] til .eq, eller null til .is(kolonne, null).
+export function guardFilters(fields: CrawlFields, keys: readonly (keyof CrawlFields)[]) {
+  return keys.map((key) => [key, fields[key]] as const);
+}
+
+type Guardable<Q> = { eq(column: string, value: string): Q; is(column: string, value: null): Q };
+
+export function whereStill<Q extends Guardable<Q>>(query: Q, fields: CrawlFields, keys: readonly (keyof CrawlFields)[]): Q {
+  return guardFilters(fields, keys).reduce<Q>(
+    (q, [column, value]) => (value === null ? q.is(column, null) : q.eq(column, value)),
+    query,
+  );
+}
+
 // Sætter turens felter og eventuelt én pubs visited_at.
 export function withCrawl(fields: CrawlFields, visited?: { stopId: string; at: string | null }): HoldChange {
   return (v) => ({

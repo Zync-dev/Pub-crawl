@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CHALLENGES, drawChallenge } from "./challenges";
+import { CHALLENGES, drawChallenge, needsVote } from "./challenges";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -46,5 +46,24 @@ describe("drawChallenge", () => {
     const drawn = drawChallenge([{ name: "A" }]);
     expect(drawn.text).toBe(CHALLENGES[index]);
     expect(drawn.target).toBeNull();
+  });
+});
+
+describe("navne med $", () => {
+  it("sætter navnet ind, som det er", () => {
+    const index = CHALLENGES.findIndex((c) => c.startsWith("{navn}"));
+    vi.spyOn(Math, "random").mockReturnValue((index + 0.5) / CHALLENGES.length);
+    for (const name of ["Ca$$h", "A$&B", "x$'y", "x$`y"]) {
+      const drawn = drawChallenge([{ name }]);
+      expect(drawn.text).toBe(name + CHALLENGES[index].slice("{navn}".length));
+    }
+  });
+});
+
+describe("needsVote", () => {
+  it("springer afstemningen over, når der intet er at klare", () => {
+    expect(needsVote("Ingen udfordring her. Nyd øllen.")).toBe(false);
+    expect(needsVote(CHALLENGES[0])).toBe(true);
+    expect(CHALLENGES.filter((c) => !needsVote(c))).toHaveLength(1);
   });
 });

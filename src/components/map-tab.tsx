@@ -101,11 +101,11 @@ export function MapTab({
       setNearby(fresh);
       setMessage(
         fresh.length
-          ? `${fresh.length} pubs og barer her. Tryk på en rød prik for at lægge den på ruten.`
-          : "Ingen pubs her. Flyt kortet og prøv igen.",
+          ? `${fresh.length === 1 ? "1 pub eller bar" : `${fresh.length} pubber og barer`} her. Tryk på en rød prik for at lægge den på ruten.`
+          : "Ingen pubber her. Flyt kortet og prøv igen.",
       );
     } catch {
-      setMessage("Kunne ikke hente pubs lige nu. Prøv igen om lidt.");
+      setMessage("Kunne ikke hente pubber lige nu. Prøv igen om lidt.");
     } finally {
       setBusy(null);
     }
@@ -169,7 +169,7 @@ export function MapTab({
               disabled={busy !== null || routeLocked}
               onClick={() => void findNearby()}
             >
-              Pubs her
+              Pubber her
             </Button>
           </div>
           {myPosition && (
@@ -274,7 +274,7 @@ function RouteList({
       <Card variant="framed" className="text-center">
         <p className="pc-label mb-2 text-oxblood-700">Ruten er tom</p>
         <p className="text-muted">
-          Tryk på <strong>Pubs her</strong> for at finde pubs omkring kortet, eller <strong>Sæt en pub</strong> for
+          Tryk på <strong>Pubber her</strong> for at finde pubber omkring kortet, eller <strong>Sæt en pub</strong> for
           at sætte en selv.
         </p>
       </Card>

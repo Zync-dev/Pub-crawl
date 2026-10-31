@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { preparePhoto } from "./photo-image";
 import type { PendingPhoto, Photo, RatingSummary, StopRating } from "./reviews-types";
+import { liveTopic } from "./realtime";
 import { getSupabase } from "./supabase";
 
 // Stjerner og billeder for én tur. Nu, Ruten og Stillingen bruger det samme lager,
@@ -81,7 +82,7 @@ class ReviewsStore {
     const supabase = getSupabase();
     const filter = `crawl_id=eq.${this.crawlId}`;
     const channel = supabase
-      .channel(`pub-reviews:${this.crawlId}`)
+      .channel(liveTopic("pub-reviews", this.crawlId))
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "stop_ratings", filter }, (p) =>
         this.upsertRating(p.new as StopRating),
       )

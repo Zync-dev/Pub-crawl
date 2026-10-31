@@ -9,6 +9,7 @@ import {
   type RollCall,
   type RollCallAnswer,
 } from "./roll-call";
+import { liveTopic } from "./realtime";
 import { getSupabase } from "./supabase";
 import type { Member } from "./types";
 
@@ -82,7 +83,7 @@ export function useRollCall(
     const supabase = getSupabase();
     const filter = `crawl_id=eq.${crawlId}`;
     const channel = supabase
-      .channel(`roll-call:${crawlId}`)
+      .channel(liveTopic("roll-call", crawlId))
       .on("postgres_changes", { event: "*", schema: "public", table: "roll_calls", filter }, (payload) => {
         if (payload.eventType === "DELETE") return void refetch();
         takeCall(payload.new as RollCall);
