@@ -20,19 +20,31 @@ describe("drawChallenge", () => {
     vi.spyOn(Math, "random")
       .mockReturnValueOnce((index + 0.5) / CHALLENGES.length)
       .mockReturnValueOnce(0.99);
-    const drawn = drawChallenge(["Freja", "Mikkel"]);
-    expect(drawn).toBe(CHALLENGES[index].replaceAll("{navn}", "Mikkel"));
-    expect(drawn).not.toContain("{navn}");
+    const mikkel = { name: "Mikkel" };
+    const drawn = drawChallenge([{ name: "Freja" }, mikkel]);
+    expect(drawn.text).toBe(CHALLENGES[index].replaceAll("{navn}", "Mikkel"));
+    expect(drawn.text).not.toContain("{navn}");
+    expect(drawn.target).toBe(mikkel);
   });
 
   it("bruger Den yngste, når ingen er med", () => {
     const index = CHALLENGES.findIndex((c) => c.startsWith("{navn}"));
     vi.spyOn(Math, "random").mockReturnValue((index + 0.5) / CHALLENGES.length);
-    expect(drawChallenge([])).toMatch(/^Den yngste /);
+    const drawn = drawChallenge([]);
+    expect(drawn.text).toMatch(/^Den yngste /);
+    expect(drawn.target).toBeNull();
   });
 
   it("trækker aldrig den samme som sidst", () => {
     vi.spyOn(Math, "random").mockReturnValue(0);
-    expect(drawChallenge(["A"], CHALLENGES[0])).toBe(CHALLENGES[1].replaceAll("{navn}", "A"));
+    expect(drawChallenge([{ name: "A" }], CHALLENGES[0]).text).toBe(CHALLENGES[1].replaceAll("{navn}", "A"));
+  });
+
+  it("har intet mål, når udfordringen er for hele holdet", () => {
+    const index = CHALLENGES.findIndex((c) => !c.includes("{navn}"));
+    vi.spyOn(Math, "random").mockReturnValue((index + 0.5) / CHALLENGES.length);
+    const drawn = drawChallenge([{ name: "A" }]);
+    expect(drawn.text).toBe(CHALLENGES[index]);
+    expect(drawn.target).toBeNull();
   });
 });

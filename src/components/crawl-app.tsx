@@ -1,41 +1,47 @@
 "use client";
 
+import { Dices } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { insertChallenge } from "@/lib/challenge-rows";
 import { drawChallenge } from "@/lib/challenges";
 import { DRINK_BY_KIND, formatUnits } from "@/lib/drinks";
 import { distanceMeters, formatDistance } from "@/lib/geo";
 import { getSupabase } from "@/lib/supabase";
 import { formatClock, formatTime, remainingMs } from "@/lib/timer";
-import type { Crawl, Drink, DrinkKind, LatLng, Stop } from "@/lib/types";
+import type { Crawl, Drink, DrinkKind, LatLng, Member, Stop } from "@/lib/types";
 import { useArranger } from "@/lib/use-arranger"; // arranger
 import { useCrawl, useNow } from "@/lib/use-crawl";
 import { useCrewNotifications } from "@/lib/use-crew-notifications";
 import { useLocationSharing } from "@/lib/use-location";
 import { useAsk } from "./ask";
 import { CrewTab } from "./crew-tab";
-import { Badge, Header, Icon, Spinner, TabBar } from "./ds";
+import { Badge, Header, Icon, Spinner, TabBar, type IconName } from "./ds";
+import { GamesProvider } from "./games/games-provider";
+import { GamesTab } from "./games/games-tab";
 import { MapTab } from "./map-tab";
 import { NowTab } from "./now-tab";
 import { RollCallBadge, RollCallProvider, useRollCallWithToasts } from "./roll-call"; // Er alle med? (rollcall)
 import { RoundsProvider } from "./rounds"; // Omgange
 import { StatsTab } from "./stats-tab";
 
-type Tab = "now" | "route" | "stats" | "crew";
+type Tab = "now" | "route" | "stats" | "crew" | "games";
 
 const TABS = [
   { id: "now", label: "Nu", icon: "stamp" },
   { id: "route", label: "Ruten", icon: "route" },
   { id: "stats", label: "Stillingen", icon: "chart-column" },
   { id: "crew", label: "Holdet", icon: "users" },
-] as const satisfies { id: Tab; label: string; icon: string }[];
+  // games: fanen Spil
+  { id: "games", label: "Spil", icon: Dices },
+] as const satisfies { id: Tab; label: string; icon: IconName }[];
 
 export type CrawlActions = ReturnType<typeof useActions>;
 
 function useActions(
   crawl: Crawl,
   stops: Stop[],
-  memberNames: string[],
+  members: Member[],
   userId: string,
   patch: ReturnType<typeof useCrawl>["patch"],
 ) {
@@ -50,35 +56,73 @@ function useActions(
     return !error;
   }
 
+  // games: current_challenge_id skrives kun, når der er noget at skrive, så Nu også virker uden migration 0006.
+  function challengeColumn(challengeId: string | null) {
+    if (challengeId) return { current_challenge_id: challengeId };
+    return crawl.current_challenge_id ? { current_challenge_id: null } : {};
+  }
+
   return {
     async arrive(stop: Stop) {
       const now = new Date().toISOString();
-      const challenge = drawChallenge(memberNames, crawl.challenge);
+      // games: udfordringen gemmes også som en række, så holdet kan stemme om den.
+      const drawn = drawChallenge(members, crawl.challenge);
+      const challenge = drawn.text;
       patch((p) => ({
         ...p,
-        crawl: { ...p.crawl, current_stop_id: stop.id, arrived_at: now, challenge },
+        crawl: { ...p.crawl, current_stop_id: stop.id, arrived_at: now, challenge, current_challenge_id: null },
         stops: p.stops.map((s) => (s.id === stop.id ? { ...s, visited_at: s.visited_at ?? now } : s)),
       }));
       if (!stop.visited_at) {
         await run(supabase.from("stops").update({ visited_at: now }).eq("id", stop.id));
       }
-      if (await run(supabase.from("crawls").update({ current_stop_id: stop.id, arrived_at: now, challenge }).eq("id", id))) {
+      const challengeId = await insertChallenge(supabase, {
+        crawl_id: id,
+        stop_id: stop.id,
+        text: challenge,
+        target_user_id: drawn.target?.user_id ?? null,
+      });
+      if (challengeId) patch((p) => ({ ...p, crawl: { ...p.crawl, current_challenge_id: challengeId } }));
+      const update = { current_stop_id: stop.id, arrived_at: now, challenge, ...challengeColumn(challengeId) };
+      if (await run(supabase.from("crawls").update(update).eq("id", id))) {
         ask.toast(`Tjekket ind på ${stop.name}`);
       }
     },
     async leave() {
       patch((p) => ({
         ...p,
-        crawl: { ...p.crawl, current_stop_id: null, arrived_at: null, challenge: null },
+        crawl: { ...p.crawl, current_stop_id: null, arrived_at: null, challenge: null, current_challenge_id: null },
       }));
       await run(
-        supabase.from("crawls").update({ current_stop_id: null, arrived_at: null, challenge: null }).eq("id", id),
+        supabase
+          .from("crawls")
+          .update({
+            current_stop_id: null,
+            arrived_at: null,
+            challenge: null,
+            ...challengeColumn(null),
+          })
+          .eq("id", id),
       );
     },
     async newChallenge() {
-      const challenge = drawChallenge(memberNames, crawl.challenge);
-      patch((p) => ({ ...p, crawl: { ...p.crawl, challenge } }));
-      await run(supabase.from("crawls").update({ challenge }).eq("id", id));
+      // games: en ny række for hver udfordring. Den gamle beholder sine stemmer.
+      const drawn = drawChallenge(members, crawl.challenge);
+      const challenge = drawn.text;
+      patch((p) => ({ ...p, crawl: { ...p.crawl, challenge, current_challenge_id: null } }));
+      const challengeId = await insertChallenge(supabase, {
+        crawl_id: id,
+        stop_id: crawl.current_stop_id,
+        text: challenge,
+        target_user_id: drawn.target?.user_id ?? null,
+      });
+      if (challengeId) patch((p) => ({ ...p, crawl: { ...p.crawl, current_challenge_id: challengeId } }));
+      await run(
+        supabase
+          .from("crawls")
+          .update({ challenge, ...challengeColumn(challengeId) })
+          .eq("id", id),
+      );
     },
     async extend(minutes: number) {
       if (!crawl.arrived_at) return;
@@ -206,8 +250,7 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
     setTab(next);
   }
 
-  const memberNames = useMemo(() => members.map((m) => m.name), [members]);
-  const actions = useActions(crawl, stops, memberNames, userId, data.patch);
+  const actions = useActions(crawl, stops, members, userId, data.patch);
   const currentStop = stops.find((s) => s.id === crawl.current_stop_id) ?? null;
   const nextStop = currentStop ? null : (stops.find((s) => !s.visited_at) ?? null);
   const remaining = remainingMs(crawl, currentStop, now);
@@ -285,6 +328,10 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
         title: "Aftenens rute",
       };
     }
+    // games: overskrift for Spil
+    if (tab === "games") {
+      return { eyebrow: `${members.length} på holdet · lad tilfældet bestemme`, title: "Spil" };
+    }
     if (tab === "stats") {
       const units = drinks.reduce((sum, d) => sum + Number(d.units), 0);
       return { eyebrow: `${formatUnits(units)} genstande i alt`, title: "Stillingen" };
@@ -295,11 +342,7 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
     };
   })();
 
-  return (
-    // Omgange: deler omgangene med Nu, Stillingen og Holdet.
-    <RoundsProvider crawlId={crawl.id} userId={userId} members={members} stops={stops} currentStopId={crawl.current_stop_id}>
-    {/* Er alle med? (rollcall) */}
-    <RollCallProvider value={rollCall}>
+  const page = (
     <div className="flex h-dvh flex-col overflow-hidden bg-cream-200">
       <Header eyebrow={header.eyebrow} title={header.title} left={back} right={headerRight} />
 
@@ -362,13 +405,33 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
                 />
               </div>
             )}
+            {/* games: fanen Spil */}
+            {tab === "games" && (
+              <div key="games" className="pc-enter">
+                <GamesTab
+                  onOpenPoints={() => {
+                    changeTab("stats");
+                    setTimeout(() => document.getElementById("udfordringer")?.scrollIntoView({ block: "start" }), 60);
+                  }}
+                />
+              </div>
+            )}
           </>
         )}
       </main>
 
       <TabBar items={[...TABS]} value={tab} onChange={changeTab} />
     </div>
-    </RollCallProvider>
-    </RoundsProvider>
+  );
+
+  // games: GamesProvider deler udfordringspoint og spilresultater mellem Nu, Stillingen og Spil.
+  return (
+    <GamesProvider crawlId={crawl.id} userId={userId} members={members}>
+      {/* Omgange: deler omgangene med Nu, Stillingen og Holdet. */}
+      <RoundsProvider crawlId={crawl.id} userId={userId} members={members} stops={stops} currentStopId={crawl.current_stop_id}>
+        {/* Er alle med? (rollcall) */}
+        <RollCallProvider value={rollCall}>{page}</RollCallProvider>
+      </RoundsProvider>
+    </GamesProvider>
   );
 }

@@ -6,6 +6,8 @@ export type Crawl = {
   current_stop_id: string | null;
   arrived_at: string | null;
   challenge: string | null;
+  // games: rækken i challenges for udfordringen ovenfor (migration 0006_games.sql).
+  current_challenge_id?: string | null;
   created_at: string;
 };
 

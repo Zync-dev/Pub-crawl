@@ -11,6 +11,7 @@ import type { CrawlActions } from "./crawl-app";
 // nav-live: Vis vej
 import { DirectionsButton } from "./directions-button";
 import { Button, Card, Icon, SectionTitle } from "./ds";
+import { ChallengeVoting } from "./games/challenge-voting"; // games: stemmer om udfordringen
 import { RollCallCard, RollCallStarter, useRollCallContext } from "./roll-call"; // Er alle med? (rollcall)
 import { NextRoundCard } from "./rounds"; // Omgange
 
@@ -157,6 +158,8 @@ function AtPub({
             Udfordring
           </p>
           <p className="font-serif text-[24px] leading-[1.15]">{crawl.challenge}</p>
+          {/* games: Klaret / Ikke klaret */}
+          <ChallengeVoting challengeId={crawl.current_challenge_id} text={crawl.challenge} />
           <div>
             <Button variant="ghost" size="sm" icon="dices" onClick={() => void actions.newChallenge()}>
               Træk en ny
