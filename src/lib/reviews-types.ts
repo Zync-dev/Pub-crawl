@@ -1,6 +1,8 @@
 // Stjerner og billeder (migration 0007_pub_reviews).
 
 export type StopRating = {
+  // Rækkens id (0014). Mangler på en stjerne, der endnu ikke er gemt.
+  id?: string;
   stop_id: string;
   crawl_id: string;
   user_id: string;

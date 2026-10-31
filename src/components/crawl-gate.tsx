@@ -153,8 +153,9 @@ function JoinForm({
     const { data, error } = await getSupabase()
       .rpc("join_crawl", { p_code: code, p_member_name: name })
       .single<Crawl>();
-    if (error || !data) {
-      setError(errorText(error));
+    // En forkert kode giver en tom række i stedet for en fejl (databasen tæller forsøgene).
+    if (error || !data?.id) {
+      setError(errorText(error ?? { message: "crawl_not_found" }));
       setBusy(false);
       return;
     }

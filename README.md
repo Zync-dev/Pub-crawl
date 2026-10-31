@@ -39,7 +39,13 @@ Bemærk: en webapp kan kun dele positionen, mens den er åben. På iPhone stoppe
    VAPID_SUBJECT=mailto:<din mail>
    ```
 
-   Den private nøgle må aldrig ligge i koden eller i en `NEXT_PUBLIC_`-variabel. Uden nøglerne virker appen som før, bare uden beskeder.
+   /api/push spørger databasen med Supabase-projektets hemmelige nøgle (Project Settings → API Keys → Secret keys), så ingen browser ser de andres push-nøgler. Tilføj den også:
+
+   ```
+   SUPABASE_SECRET_KEY=sb_secret_...
+   ```
+
+   De private nøgler må aldrig ligge i koden eller i en `NEXT_PUBLIC_`-variabel. Uden nøglerne virker appen som før, bare uden beskeder.
 
 5. `pnpm install` og `pnpm dev`.
 
@@ -52,7 +58,7 @@ Bemærk: en webapp kan kun dele positionen, mens den er åben. På iPhone stoppe
 ## Test
 
 - `pnpm test` kører enhedstestene i `src/lib` med Vitest (statistik, afstande, timer, udfordringer, drinks, pub-søgning med en falsk `fetch`, navn og seneste ture med et falsk `localStorage`, fejlrapporteren). Ingen netværk.
-- `pnpm test:db` tester rettighederne mod Supabase-projektet i `.env.local`. Den logger tre anonyme brugere ind, opretter en tur ved navn "Test db" og tjekker, at deltagere kan læse, men ikke slette eller skrive drinks på andre, at en udenforstående intet ser, og at `join_crawl` og `crawl_preview` opfører sig. Bagefter forlader den turen. Kræver netværk og anonyme logins, og hver kørsel bruger tre af Supabases anonyme logins.
+- `pnpm test:db` tester rettighederne mod Supabase-projektet i `.env.local`. Den logger tre anonyme brugere ind, opretter en tur ved navn "Test db" og tjekker, at deltagere kan læse, men ikke slette eller skrive drinks på andre, at en udenforstående intet ser, og at `join_crawl` og `crawl_preview` opfører sig. Bagefter forlader den turen. Kræver netværk og anonyme logins, og hver kørsel bruger tre af Supabases anonyme logins. Push-funktionerne testes kun, når `SUPABASE_SECRET_KEY` står i `.env.local`.
 
 ## Fejl og besøgstal
 

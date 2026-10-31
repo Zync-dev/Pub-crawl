@@ -116,10 +116,13 @@ describe("billeder i storage", () => {
     denied(res);
   });
 
-  it("kan ses af holdet", async () => {
-    const signed = ok(await b.c.storage.from("photos").createSignedUrl(aPhoto, 60));
-    expect(signed.signedUrl).toContain("token=");
-    ok(await b.c.storage.from("photos").download(aPhoto));
+  // Rettet i 0014: før kunne holdet se filer, hvis række var slettet.
+  it("en fil uden række ses kun af den, der lagde den op", async () => {
+    ok(await a.c.storage.from("photos").download(aPhoto));
+    denied(await b.c.storage.from("photos").createSignedUrl(aPhoto, 60));
+    denied(await b.c.storage.from("photos").download(aPhoto));
+    const list = await b.c.storage.from("photos").list(`${crawl.id}/${stop.id}`);
+    expect(list.data ?? []).toEqual([]);
   });
 
   it("kan ikke ses på tværs af ture", async () => {
@@ -157,10 +160,20 @@ describe("billeder i storage", () => {
       expect(ok(await o.c.from("photos").select("id").eq("crawl_id", crawl.id))).toEqual([]);
     });
 
+    it("filen kan ses af holdet, når rækken findes", async () => {
+      const signed = ok(await b.c.storage.from("photos").createSignedUrl(aPhoto, 60));
+      expect(signed.signedUrl).toContain("token=");
+      ok(await b.c.storage.from("photos").download(aPhoto));
+      denied(await o.c.storage.from("photos").download(aPhoto));
+    });
+
     it("kan kun slettes af den, der tog billedet", async () => {
       noRows(await b.c.from("photos").delete().eq("id", row.id).select());
       noRows(await o.c.from("photos").delete().eq("id", row.id).select());
       expect(ok(await a.c.from("photos").delete().eq("id", row.id).select())).toHaveLength(1);
+      // Også hvis filen ikke nåede at blive slettet, kan holdet ikke længere se den.
+      denied(await b.c.storage.from("photos").download(aPhoto));
+      ok(await a.c.storage.from("photos").download(aPhoto));
     });
   });
 });

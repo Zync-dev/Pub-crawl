@@ -88,13 +88,13 @@ class ReviewsStore {
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "stop_ratings", filter }, (p) =>
         this.upsertRating(p.new as StopRating),
       )
-      // Slettede rækker kan ikke filtreres på crawl_id, men nøglen følger med, så vi fjerner dem lokalt.
+      // Slettede rækker kan ikke filtreres på crawl_id. Kun nøglen følger med: rækkens tilfældige id
+      // (efter 0014) eller pub og bruger (før), så vi fjerner rækken lokalt ud fra den.
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "stop_ratings" }, (p) => {
         const old = p.old as Partial<StopRating>;
-        this.set((prev) => ({
-          ...prev,
-          ratings: prev.ratings.filter((r) => r.stop_id !== old.stop_id || r.user_id !== old.user_id),
-        }));
+        const gone = (r: StopRating) =>
+          old.id ? r.id === old.id : r.stop_id === old.stop_id && r.user_id === old.user_id;
+        this.set((prev) => ({ ...prev, ratings: prev.ratings.filter((r) => !gone(r)) }));
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "photos", filter }, (p) =>
         this.addPhoto(p.new as Photo),
@@ -204,7 +204,12 @@ class ReviewsStore {
       this.addPhoto(photo);
       return false;
     }
-    await supabase.storage.from("photos").remove([photo.path]);
+    // Holdet kan ikke se en fil uden række, men filen skal stadig væk. Prøv igen et par gange på et dårligt net.
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const { error: fileError } = await supabase.storage.from("photos").remove([photo.path]);
+      if (!fileError) break;
+      await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+    }
     return true;
   }
 }

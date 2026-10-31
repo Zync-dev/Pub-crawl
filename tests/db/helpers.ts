@@ -19,6 +19,14 @@ export function anon() {
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
+// En klient med projektets hemmelige nøgle (service_role), som /api/push bruger.
+// null, hvis SUPABASE_SECRET_KEY ikke står i .env.local. Så springes de test over.
+export function service(): SupabaseClient | null {
+  const secret = process.env.SUPABASE_SECRET_KEY;
+  if (!url || !secret) return null;
+  return createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false } });
+}
+
 function asUser(name: string, s: TestSession): TestUser {
   if (!url || !key) throw new Error("NEXT_PUBLIC_SUPABASE_URL og NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY mangler i .env.local");
   const c = createClient(url, key, { accessToken: async () => s.token });

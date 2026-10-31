@@ -1,6 +1,6 @@
 // Udfordringspoint (0006): challenges, challenge_votes og vote_challenge.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { anon, denied, leave, newCrawl, ok, users, uuid, type TestCrawl, type TestUser } from "./helpers";
+import { anon, denied, leave, newCrawl, noRows, ok, users, uuid, type TestCrawl, type TestUser } from "./helpers";
 
 type Challenge = { id: string; crawl_id: string; text: string; target_user_id: string | null };
 type Vote = { user_id: string; done: boolean };
@@ -41,9 +41,33 @@ describe("challenges", () => {
     denied(await draw(a, "Test db: snyd", o.id));
   });
 
-  it("kan ikke rettes eller slettes", async () => {
+  it("kan ikke rettes", async () => {
     denied(await a.c.from("challenges").update({ text: "Snyd" }).eq("id", forB.id));
-    denied(await a.c.from("challenges").delete().eq("id", forB.id));
+  });
+
+  // Rettet i 0014: udfordringer havde ingen afsender og kunne ikke slettes af nogen.
+  it("får afsenderen sat af databasen, som ikke kan skrives", async () => {
+    const row = ok(await a.c.from("challenges").select("created_by").eq("id", forB.id).single<{ created_by: string }>());
+    expect(row.created_by).toBe(a.id);
+    denied(await a.c.from("challenges").insert({ crawl_id: crawl.id, text: "Test db: snyd", created_by: b.id }));
+    denied(await a.c.from("challenges").insert({ id: uuid(), crawl_id: crawl.id, text: "Test db: snyd" }));
+  });
+
+  it("kan slettes af den, der trak den, og af arrangøren, men ikke af andre", async () => {
+    // b er arrangør. a trak forB, b trak forAll.
+    noRows(await a.c.from("challenges").delete().eq("id", forAll.id).select());
+    noRows(await o.c.from("challenges").delete().eq("id", forB.id).select());
+    const mine = ok(await draw(a, "Test db: slettes af a", null));
+    expect(ok(await a.c.from("challenges").delete().eq("id", mine.id).select())).toHaveLength(1);
+    const theirs = ok(await draw(a, "Test db: slettes af arrangøren", null));
+    expect(ok(await b.c.from("challenges").delete().eq("id", theirs.id).select())).toHaveLength(1);
+  });
+
+  it("højst 300 pr. tur", async () => {
+    const count = ok(await a.c.from("challenges").select("id").eq("crawl_id", crawl.id)).length;
+    const rows = Array.from({ length: 300 - count }, (_, i) => ({ crawl_id: crawl.id, text: `Test db: fyld ${i}` }));
+    ok(await a.c.from("challenges").insert(rows));
+    denied(await draw(a, "Test db: én for mange", null), "too_many_challenges");
   });
 
   it("kan vises under Nu, men kun fra samme tur", async () => {

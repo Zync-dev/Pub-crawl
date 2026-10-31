@@ -46,9 +46,11 @@ describe("create_crawl, crawl_preview og join_crawl", () => {
     expect(data).toEqual([]);
   });
 
-  it("melder fejl for en ukendt kode", async () => {
-    const { error } = await b.c.rpc("join_crawl", { p_code: "ZZZZZZ", p_member_name: "Test B" });
-    expect(error?.message).toContain("crawl_not_found");
+  // Fra 0014 en tom række i stedet for en fejl, så databasen kan tælle forkerte koder.
+  it("giver en tom række for en ukendt kode", async () => {
+    const { data, error } = await b.c.rpc("join_crawl", { p_code: "ZZZZZZ", p_member_name: "Test B" }).single<Crawl>();
+    expect(error).toBeNull();
+    expect(data?.id ?? null).toBeNull();
   });
 
   it("lader den anden deltager hoppe med, også to gange", async () => {
@@ -163,6 +165,28 @@ describe("udenforstående", () => {
   it("kan ikke kalde is_member for at gætte", async () => {
     const { data } = await outsider.c.rpc("is_member", { p_crawl: crawl.id });
     expect(data).toBe(false);
+  });
+});
+
+// Rettet i 0014: tiden kom fra telefonens ur, så en position med en tid i fremtiden aldrig blev slettet.
+describe("positioner", () => {
+  type Pos = { lat: number | null; lng: number | null; located_at: string | null };
+  async function position() {
+    const { data } = await a.c.from("members").select("lat, lng, located_at").eq("crawl_id", crawl.id).eq("user_id", a.id).single<Pos>();
+    return data!;
+  }
+
+  it("får databasens tid, ikke telefonens", async () => {
+    const future = new Date(Date.now() + 24 * 3_600_000).toISOString();
+    const { error } = await a.c.from("members").update({ lat: 55.68, lng: 12.57, accuracy: 10, located_at: future }).eq("crawl_id", crawl.id).eq("user_id", a.id);
+    expect(error).toBeNull();
+    const pos = await position();
+    expect(Math.abs(new Date(pos.located_at!).getTime() - Date.now())).toBeLessThan(5 * 60_000);
+  });
+
+  it("ryddes helt, når man holder op med at dele", async () => {
+    await a.c.from("members").update({ lat: null, located_at: new Date().toISOString() }).eq("crawl_id", crawl.id).eq("user_id", a.id);
+    expect(await position()).toEqual({ lat: null, lng: null, located_at: null });
   });
 });
 
