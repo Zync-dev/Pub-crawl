@@ -69,7 +69,9 @@ const ICONS = {
   x: X,
 } satisfies Record<string, LucideIcon>;
 
-export type IconName = keyof typeof ICONS;
+// Et navn fra listen ovenfor eller en Lucide-komponent direkte (import { Dices } from "lucide-react").
+// Nye funktioner bruger helst komponenten, så de ikke alle skal rette i den samme liste.
+export type IconName = keyof typeof ICONS | LucideIcon;
 
 export function Icon({
   name,
@@ -82,7 +84,7 @@ export function Icon({
   color?: string;
   style?: CSSProperties;
 }) {
-  const Component = ICONS[name];
+  const Component = typeof name === "string" ? ICONS[name] : name;
   return (
     <Component
       aria-hidden
