@@ -2,6 +2,7 @@
 
 import { KeyRound, Radio } from "lucide-react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { fetchPublicCrawl, formatCopenhagenTime, liveStatus, type PublicCrawl } from "@/lib/live-link";
 import type { Stop } from "@/lib/types";
@@ -54,7 +55,8 @@ export function PublicLive({ token, initial }: { token: string; initial: PublicC
       controller = own;
       try {
         const next = await fetchPublicCrawl(token, { signal: own.signal });
-        setCrawl(next);
+        // Samme svar som sidst: behold objektet, så kortet ikke tegnes om.
+        setCrawl((prev) => (prev && next && JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
         setUpdatedAt(new Date().toISOString());
         setFailed(false);
       } catch {
@@ -209,6 +211,7 @@ export function PublicLive({ token, initial }: { token: string; initial: PublicC
               onPickNearby={noop}
               onViewChange={noop}
               visible
+              interactive={false}
             />
           </div>
           <ol className="flex flex-col gap-2.5">
@@ -221,7 +224,7 @@ export function PublicLive({ token, initial }: { token: string; initial: PublicC
                     total={total}
                     name={stop.name}
                     time={stop.visited_at && !isCurrent ? formatCopenhagenTime(stop.visited_at) : undefined}
-                    note={`${stop.minutes} min.`}
+                    note={`${stop.minutes} min. ${isCurrent ? "her" : "der"}`}
                     status={isCurrent ? "current" : stop.visited_at ? "done" : "upcoming"}
                   />
                 </li>
@@ -233,7 +236,10 @@ export function PublicLive({ token, initial }: { token: string; initial: PublicC
 
       <Card className="flex items-center gap-3" padding="14px 16px">
         <Icon name={KeyRound} size={20} color="var(--green-800)" />
-        <p className="text-[14px]">Vil du med på holdet? Spørg dem om koden.</p>
+        <p className="min-w-0 flex-1 text-[14px]">Vil du med? Få koden af holdet.</p>
+        <Link href="/" className="pc-btn pc-btn--secondary">
+          Gå med
+        </Link>
       </Card>
 
       {footer}

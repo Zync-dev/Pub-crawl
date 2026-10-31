@@ -52,13 +52,15 @@ export function DirectionsButton({
       target="_blank"
       rel="noopener noreferrer"
       className={cls}
-      aria-label={`Vis vej til ${name}`}
+      // Den synlige tekst skal stå i navnet, så stemmestyring kan finde knappen.
+      aria-label={iconOnly ? `Vis vej til ${name}` : undefined}
       title={iconOnly ? `Vis vej til ${name}` : undefined}
       // Kortet ligger i en StopCard, som selv reagerer på tryk.
       onClick={(e) => e.stopPropagation()}
     >
       <Icon name={Footprints} size={size === "lg" ? 20 : 18} />
       {!iconOnly && label}
+      {!iconOnly && label === "Vis vej" && <span className="sr-only"> til {name}</span>}
     </a>
   );
 }

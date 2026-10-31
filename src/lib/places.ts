@@ -15,13 +15,53 @@ type NominatimRow = {
 const NOMINATIM = "https://nominatim.openstreetmap.org/search";
 const BAR_TYPES = new Set(["pub", "bar", "biergarten", "nightclub"]);
 
+// OpenStreetMaps typer er engelske. Dem, man møder på en pubtur, får et dansk navn.
+const KIND_LABELS: Record<string, string> = {
+  pub: "Pub",
+  bar: "Bar",
+  nightclub: "Natklub",
+  biergarten: "Ølhave",
+  restaurant: "Restaurant",
+  cafe: "Café",
+  fast_food: "Fastfood",
+  hotel: "Hotel",
+  house: "Adresse",
+  building: "Adresse",
+  apartments: "Adresse",
+  yes: "Adresse",
+};
+
+function addressParts(displayName: string) {
+  return displayName
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
+
+// Adresser har intet navn, og display_name starter med husnummeret ("3, Vesterbrogade, ...").
+export function placeName(r: Pick<NominatimRow, "name" | "display_name">) {
+  if (r.name) return r.name;
+  const [first = "", second] = addressParts(r.display_name);
+  return /^\d+\s?[a-zæøå]?$/i.test(first) && second ? `${second} ${first}` : first;
+}
+
+// Typen på dansk, ellers et kort sted (gade og bydel) fra display_name i stedet for et engelsk ord.
+export function placeKind(r: Pick<NominatimRow, "name" | "display_name" | "type">) {
+  const label = KIND_LABELS[r.type];
+  if (label) return label;
+  const parts = addressParts(r.display_name);
+  // Det første led er navnet (eller husnummeret), så stedet står bagefter.
+  const rest = parts.slice(/^\d/.test(parts[0] ?? "") ? 2 : 1, 3);
+  return rest.join(", ") || "Sted";
+}
+
 function toPlace(r: NominatimRow): NearbyPlace {
   return {
     id: `n${r.place_id}`,
-    name: r.name || r.display_name.split(",")[0],
+    name: placeName(r),
     lat: Number(r.lat),
     lng: Number(r.lon),
-    kind: r.type,
+    kind: placeKind(r),
   };
 }
 
@@ -48,12 +88,17 @@ export async function searchPlaces(query: string, near: Bounds): Promise<NearbyP
   return ((await res.json()) as NominatimRow[]).map(toPlace);
 }
 
+// Nominatim tillader én forespørgsel i sekundet.
+const NOMINATIM_GAP_MS = 1_000;
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 // Pubs og barer i kortudsnittet. Nominatim først, fordi Overpass ofte er overbelastet.
 export async function nearbyBars(bounds: Bounds): Promise<NearbyPlace[]> {
-  try {
-    const found = new Map<string, NearbyPlace>();
-    // Hver for sig, så vi holder os under én forespørgsel i sekundet.
-    for (const q of ["pub", "bar"]) {
+  const found = new Map<string, NearbyPlace>();
+  // Hver for sig og med et sekund imellem. Fejler den ene, bruges det, den anden fandt.
+  for (const [i, q] of ["pub", "bar"].entries()) {
+    if (i > 0) await wait(NOMINATIM_GAP_MS);
+    try {
       const params = new URLSearchParams({
         q,
         format: "jsonv2",
@@ -69,11 +114,11 @@ export async function nearbyBars(bounds: Bounds): Promise<NearbyPlace[]> {
         if (!BAR_TYPES.has(row.type) || !row.name) continue;
         found.set(`${row.name}|${Number(row.lat).toFixed(4)}`, toPlace(row));
       }
+    } catch {
+      // Den anden søgning eller Overpass tager over.
     }
-    if (found.size) return [...found.values()];
-  } catch {
-    // Så prøver vi Overpass.
   }
+  if (found.size) return [...found.values()];
   return overpassBars(bounds);
 }
 
@@ -117,7 +162,7 @@ out center 60;`;
         name: el.tags?.name ?? "Bar",
         lat: el.lat ?? el.center?.lat ?? 0,
         lng: el.lon ?? el.center?.lon ?? 0,
-        kind: el.tags?.amenity ?? "bar",
+        kind: KIND_LABELS[el.tags?.amenity ?? "bar"] ?? "Bar",
       }))
       .filter((p) => p.lat !== 0);
   } finally {

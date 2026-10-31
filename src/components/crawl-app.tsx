@@ -109,10 +109,11 @@ function useActions(
         .single<Stop>();
       if (error || !data) {
         ask.toast("Pubben blev ikke lagt på ruten.", "danger");
-        return;
+        return false;
       }
       patch((p) => ({ ...p, stops: [...p.stops.filter((s) => s.id !== data.id), data] }));
       ask.toast(`${data.name} er lagt på ruten`);
+      return true;
     },
     async moveStop(stop: Stop, direction: -1 | 1) {
       const index = stops.findIndex((s) => s.id === stop.id);
@@ -170,6 +171,10 @@ function useActions(
         members: p.members.map((m) => (m.user_id === userId ? { ...m, name: clean } : m)),
       }));
       await run(supabase.from("members").update({ name: clean }).eq("crawl_id", id).eq("user_id", userId));
+    },
+    // nav-live: et nyt live-link gælder med det samme, også hvis Realtime ikke sender rækken.
+    setShareToken(token: string) {
+      patch((p) => ({ ...p, crawl: { ...p.crawl, share_token: token } as Crawl }));
     },
     async renameCrawl(name: string) {
       const clean = name.trim().slice(0, 40);

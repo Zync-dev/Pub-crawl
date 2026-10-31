@@ -54,7 +54,14 @@ export function CrewTab({
       </div>
       <div key={tab} className="pc-enter flex flex-col gap-2.5 px-4 py-3.5">
         {tab === "crew" ? (
-          <Crew crawl={crawl} members={members} drinks={drinks} userId={userId} now={now} />
+          <Crew
+            crawl={crawl}
+            members={members}
+            drinks={drinks}
+            userId={userId}
+            now={now}
+            onShareTokenRotated={actions.setShareToken}
+          />
         ) : (
           <Settings
             crawl={crawl}
@@ -76,12 +83,14 @@ function Crew({
   drinks,
   userId,
   now,
+  onShareTokenRotated,
 }: {
   crawl: Crawl;
   members: Member[];
   drinks: Drink[];
   userId: string;
   now: number;
+  onShareTokenRotated: (token: string) => void;
 }) {
   const ask = useAsk();
   const [copied, setCopied] = useState(false);
@@ -119,7 +128,7 @@ function Crew({
       </Card>
 
       {/* nav-live: "Sent på den? Del et live-link" */}
-      <LiveLinkCard crawl={crawl} userId={userId} />
+      <LiveLinkCard crawl={crawl} userId={userId} onRotated={onShareTokenRotated} />
 
       {members.map((m, i) => {
         const me = m.user_id === userId;
