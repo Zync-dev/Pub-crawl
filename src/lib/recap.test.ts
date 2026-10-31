@@ -497,7 +497,7 @@ describe("buildRecap og shareCard", () => {
     expect(card.eyebrow).toBe("Aftenens regnskab");
     expect(card.title).toBe("J-dag 2026");
     expect(card.subtitle).toBe("fredag 6. november 2026 · Ruten er gået");
-    expect(card.figures.map((f) => f.label)).toEqual(["Genstande", "Drinks", "Pubs", "Gået"]);
+    expect(card.figures.map((f) => f.label)).toEqual(["Genstande", "Drinks", "Pubber", "Gået"]);
     expect(card.figures[0].value).toBe("4");
     expect(card.figures[2].value).toBe("2");
     // Seks højdepunkter og et billede, men kun plads til fem: billedet og "Mest bestilt" ryger.

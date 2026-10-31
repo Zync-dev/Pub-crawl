@@ -510,7 +510,7 @@ export function shareCard(recap: Recap, maxLines = SHARE_LINES): ShareCard {
     figures: [
       { value: formatUnits(recap.totals.units), label: "Genstande" },
       { value: String(recap.totals.drinks), label: "Drinks" },
-      { value: recap.plannedStops > visited ? `${visited}/${recap.plannedStops}` : String(visited), label: "Pubs" },
+      { value: recap.plannedStops > visited ? `${visited}/${recap.plannedStops}` : String(visited), label: "Pubber" },
       { value: formatDistance(recap.walkedMeters), label: "Gået" },
     ],
     lines: kept,

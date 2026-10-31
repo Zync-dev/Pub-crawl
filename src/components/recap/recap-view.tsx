@@ -32,6 +32,7 @@ import {
 import { renderRecapImage, shareRecapImage } from "@/lib/recap-image";
 import type { Photo } from "@/lib/reviews-types";
 import { formatRoundCount } from "@/lib/rounds";
+import { formatPubs } from "@/lib/route";
 import type { Crawl, Member } from "@/lib/types";
 import { useNow } from "@/lib/use-crawl";
 import { useDrinkOutbox } from "@/lib/use-drink-outbox";
@@ -244,7 +245,7 @@ function Hero({ recap, sharing, onShare }: { recap: Recap; sharing: boolean; onS
   const figures = [
     { value: formatUnits(recap.totals.units), label: "Genstande" },
     { value: String(recap.totals.drinks), label: "Drinks" },
-    { value: recap.plannedStops > visited ? `${visited}/${recap.plannedStops}` : String(visited), label: "Pubs" },
+    { value: recap.plannedStops > visited ? `${visited}/${recap.plannedStops}` : String(visited), label: "Pubber" },
     { value: formatDistance(recap.walkedMeters), label: "Gået" },
   ];
   return (
@@ -312,7 +313,7 @@ function RouteSection({ recap }: { recap: Recap }) {
   return (
     <section>
       <SectionTitle
-        eyebrow={`${recap.route.length === 1 ? "1 pub" : `${recap.route.length} pubs`} · ${formatDuration(total)} på pub`}
+        eyebrow={`${formatPubs(recap.route.length)} · ${formatDuration(total)} på pub`}
         title="Ruten"
       />
       <ol className="flex flex-col gap-2.5">
