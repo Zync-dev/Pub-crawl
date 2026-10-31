@@ -11,6 +11,8 @@ import type { useLocationSharing } from "@/lib/use-location";
 import { useAsk } from "./ask";
 import type { CrawlActions } from "./crawl-app";
 import { Avatar, Badge, Button, Card, Switch, Tabs } from "./ds";
+// nav-live: live-link
+import { LiveLinkCard } from "./live-link-card";
 
 export function CrewTab({
   crawl,
@@ -101,6 +103,9 @@ function Crew({
           {copied ? "Kopieret" : "Inviter vennerne"}
         </Button>
       </Card>
+
+      {/* nav-live: "Sent på den? Del et live-link" */}
+      <LiveLinkCard crawl={crawl} userId={userId} />
 
       {members.map((m, i) => {
         const me = m.user_id === userId;

@@ -8,6 +8,8 @@ import { formatTime } from "@/lib/timer";
 import type { LatLng, Member, NearbyPlace, Stop } from "@/lib/types";
 import { useAsk } from "./ask";
 import type { CrawlActions } from "./crawl-app";
+// nav-live: Vis vej
+import { DirectionsButton } from "./directions-button";
 import { Button, Card, IconButton, Input, SectionTitle, Spinner, StopCard } from "./ds";
 
 const MapView = dynamic(() => import("./map-view"), {
@@ -318,6 +320,10 @@ function RouteList({
                   >
                     Tjek ind
                   </Button>
+                )}
+                {/* nav-live: Vis vej til den næste og den nuværende pub. */}
+                {!editing && (stop.id === nextId || current) && (
+                  <DirectionsButton to={stop} name={stop.name} iconOnly variant={current ? "gold" : "secondary"} />
                 )}
               </StopCard>
               {editing && (
