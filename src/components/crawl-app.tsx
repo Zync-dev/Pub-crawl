@@ -8,6 +8,7 @@ import { distanceMeters, formatDistance } from "@/lib/geo";
 import { getSupabase } from "@/lib/supabase";
 import { formatClock, formatTime, remainingMs } from "@/lib/timer";
 import type { Crawl, Drink, DrinkKind, LatLng, Stop } from "@/lib/types";
+import { useArranger } from "@/lib/use-arranger"; // arranger
 import { useCrawl, useNow } from "@/lib/use-crawl";
 import { useLocationSharing } from "@/lib/use-location";
 import { useAsk } from "./ask";
@@ -189,6 +190,8 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
   const { crawl, members, stops, drinks } = data;
   const now = useNow(1000);
   const location = useLocationSharing(crawl.id, userId);
+  // arranger: arrangørens værktøjer, ny kode og fjernet fra holdet.
+  const arranger = useArranger(data, userId);
   const [tab, setTab] = useState<Tab>("now");
   const [mapMounted, setMapMounted] = useState(false);
   const scroller = useRef<HTMLElement>(null);
@@ -323,6 +326,7 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
                   myPosition={location.position}
                   now={slowNow}
                   actions={actions}
+                  routeLocked={!arranger.canEditRoute}
                 />
               </div>
             )}
@@ -341,6 +345,7 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
                   now={slowNow}
                   location={location}
                   actions={actions}
+                  arranger={arranger}
                 />
               </div>
             )}

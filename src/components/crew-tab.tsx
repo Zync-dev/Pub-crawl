@@ -7,7 +7,9 @@ import { formatUnits } from "@/lib/drinks";
 import { formatAgo } from "@/lib/geo";
 import { forgetCrawl } from "@/lib/recent";
 import type { Crawl, Drink, Member } from "@/lib/types";
+import type { ArrangerTools } from "@/lib/use-arranger"; // arranger
 import type { useLocationSharing } from "@/lib/use-location";
+import { ArrangerCard } from "./arranger-card"; // arranger
 import { useAsk } from "./ask";
 import type { CrawlActions } from "./crawl-app";
 import { Avatar, Badge, Button, Card, Switch, Tabs } from "./ds";
@@ -23,6 +25,7 @@ export function CrewTab({
   now,
   location,
   actions,
+  arranger,
 }: {
   crawl: Crawl;
   members: Member[];
@@ -31,6 +34,7 @@ export function CrewTab({
   now: number;
   location: ReturnType<typeof useLocationSharing>;
   actions: CrawlActions;
+  arranger: ArrangerTools;
 }) {
   const [tab, setTab] = useState<"crew" | "settings">("crew");
 
@@ -50,7 +54,14 @@ export function CrewTab({
         {tab === "crew" ? (
           <Crew crawl={crawl} members={members} drinks={drinks} userId={userId} now={now} />
         ) : (
-          <Settings crawl={crawl} members={members} userId={userId} location={location} actions={actions} />
+          <Settings
+            crawl={crawl}
+            members={members}
+            userId={userId}
+            location={location}
+            actions={actions}
+            arranger={arranger}
+          />
         )}
       </div>
     </div>
@@ -144,12 +155,14 @@ function Settings({
   userId,
   location,
   actions,
+  arranger,
 }: {
   crawl: Crawl;
   members: Member[];
   userId: string;
   location: ReturnType<typeof useLocationSharing>;
   actions: CrawlActions;
+  arranger: ArrangerTools;
 }) {
   const ask = useAsk();
   const router = useRouter();
@@ -165,9 +178,13 @@ function Settings({
         />
         <p className="text-[13px] text-muted">
           Kun holdet kan se den, og kun mens appen er åben. Slår du den fra, bliver den slettet.
+          Positioner slettes automatisk efter 6 timer.
         </p>
         {location.error && <p className="text-[13px] text-oxblood-500">{location.error}</p>}
       </Card>
+
+      {/* arranger: kun arrangøren ser sit kort */}
+      {arranger.isArranger && <ArrangerCard crawl={crawl} members={members} userId={userId} arranger={arranger} />}
 
       <Card className="flex flex-col gap-2">
         <Button
