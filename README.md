@@ -48,3 +48,13 @@ Bemærk: en webapp kan kun dele positionen, mens den er åben. På iPhone stoppe
 - `public/sw.js` er en service worker, der kun viser push-beskeder. Den gemmer ingen sider.
 - Under Holdet → Indstillinger slår man "Giv besked på telefonen" til. På iPhone virker det først, når appen ligger på hjemmeskærmen (iOS 16.4 eller nyere).
 - Beskeder sendes fra `POST /api/push` med brugerens egen adgangsnøgle. Databasefunktionen `push_targets` tjekker medlemskab og sørger for, at den samme besked kun sendes én gang (`notifications_sent`).
+
+## Test
+
+- `pnpm test` kører enhedstestene i `src/lib` med Vitest (statistik, afstande, timer, udfordringer, drinks, pub-søgning med en falsk `fetch`, navn og seneste ture med et falsk `localStorage`, fejlrapporteren). Ingen netværk.
+- `pnpm test:db` tester rettighederne mod Supabase-projektet i `.env.local`. Den logger tre anonyme brugere ind, opretter en tur ved navn "Test db" og tjekker, at deltagere kan læse, men ikke slette eller skrive drinks på andre, at en udenforstående intet ser, og at `join_crawl` og `crawl_preview` opfører sig. Bagefter forlader den turen. Kræver netværk og anonyme logins, og hver kørsel bruger tre af Supabases anonyme logins.
+
+## Fejl og besøgstal
+
+- Fejl på telefonerne (fejlsiderne og uopfangede fejl) sendes til tabellen `client_errors` i produktion. Den kan kun læses i Supabase. Højst 30 rapporter pr. bruger i timen.
+- Besøgstal kommer fra Vercel Analytics. Slå det til under projektets **Analytics** i Vercel.

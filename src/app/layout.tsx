@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { DM_Serif_Display, Libre_Franklin } from "next/font/google";
 import { PwaRegister } from "@/components/pwa-register";
+import { Analytics } from "@vercel/analytics/next";
+import { ErrorReporter } from "@/components/error-reporter";
 import "./globals.css";
 
 const dmSerif = DM_Serif_Display({
@@ -35,6 +37,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {children}
         {/* pwa-push: service worker og installér-dialog */}
         <PwaRegister />
+        {/* quality: besøgstal (Vercel Analytics) og fejlrapporter fra telefonerne */}
+        <Analytics />
+        <ErrorReporter />
       </body>
     </html>
   );
