@@ -3,7 +3,7 @@
 import { Check, Users, X } from "lucide-react";
 import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
 import { memberTone } from "@/lib/colors";
-import { joinNames } from "@/lib/roll-call";
+import { allInToastStep, joinNames, type SeenOpen } from "@/lib/roll-call";
 import { formatTime } from "@/lib/timer";
 import type { Member, Stop } from "@/lib/types";
 import { useRollCall, type RollCallState } from "@/lib/use-roll-call";
@@ -28,22 +28,17 @@ export function RollCallProvider({ value, children }: { value: RollCallState; ch
 export function useRollCallWithToasts(crawlId: string, userId: string, members: Member[], now: number) {
   const ask = useAsk();
   const rollCall = useRollCall(crawlId, userId, members, now, (text) => ask.toast(text, "danger"));
-  const seenOpen = useRef<string | null>(null);
+  const seenOpen = useRef<SeenOpen>(null);
   const { call, open, everyoneIn } = rollCall;
   const callId = call?.id;
   const closed = Boolean(call?.closed_at);
 
   useEffect(() => {
     if (!callId) return;
-    if (open) {
-      seenOpen.current = callId;
-      return;
-    }
     // Kun når vi selv så det åbent, ellers ville alle få toasten, når de åbner appen.
-    if (seenOpen.current === callId && closed && everyoneIn) {
-      seenOpen.current = null;
-      ask.toast("Alle er med");
-    }
+    const step = allInToastStep(seenOpen.current, { id: callId, open, closed, everyoneIn }, Date.now());
+    seenOpen.current = step.seen;
+    if (step.toast) ask.toast("Alle er med");
   }, [callId, open, closed, everyoneIn, ask]);
 
   return rollCall;
@@ -74,7 +69,8 @@ export function RollCallCard({ stops }: { stops: Stop[] }) {
           </p>
           {to && <p className="mt-1 truncate text-sm text-muted">På vej til {to.name}</p>}
         </div>
-        {startedByMe && (
+        {/* Alle, der har svaret, kan lukke det, så ingen står med det, fordi den, der startede, har lagt telefonen. */}
+        {(startedByMe || mine) && (
           <Button variant="ghost" icon={X} loading={busy === "close"} onClick={() => void rollCall.close()}>
             Luk
           </Button>
@@ -130,7 +126,7 @@ export function RollCallStarter({ userId, fromStopId }: { userId: string; fromSt
 
   return (
     <div className="flex items-center gap-3">
-      <p className="min-w-0 flex-1 truncate text-sm text-muted">
+      <p className="min-w-0 flex-1 text-sm text-muted">
         {showLastIn && lastIn ? (
           <span className="pc-fade-in">
             Sidst med: {lastIn.member.user_id === userId ? "dig" : lastIn.member.name} · {formatTime(lastIn.at)}

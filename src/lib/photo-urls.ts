@@ -59,6 +59,12 @@ async function sign(paths: string[]) {
   notify();
 }
 
+// Kunne linket ikke hentes sidst (typisk uden net)? Så viser appen det i stedet for at spinne.
+// Læses i render af komponenter, der bruger usePhotoUrls, så de tegnes om, når det ændrer sig.
+export function photoUrlFailed(path: string) {
+  return failedAt.has(path) && !cache.has(path);
+}
+
 // Giver et opslag fra sti til link. Manglende eller gamle links hentes i samlede kald.
 export function usePhotoUrls(paths: string[]) {
   const v = useSyncExternalStore(subscribe, getVersion, getVersion);

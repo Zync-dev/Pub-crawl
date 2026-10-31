@@ -17,6 +17,13 @@ export function canEditRoute(crawl: Crawl, userId: string) {
   return !isRouteLocked(crawl) || isArranger(crawl, userId);
 }
 
+// Kun de nævnte felter fra en række, som en RPC har sendt tilbage.
+export function pickFields<T extends object, K extends keyof T>(row: T, fields: K[]): Partial<T> {
+  const out: Partial<T> = {};
+  for (const f of fields) if (f in row) out[f] = row[f];
+  return out;
+}
+
 export const ROUTE_LOCKED_TEXT = "Ruten er låst af arrangøren.";
 
 const arrangerErrors: Record<string, string> = {

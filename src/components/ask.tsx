@@ -42,6 +42,8 @@ export type ToastOptions = {
   tone?: ToastTone;
   action?: { label: string; onClick: () => void };
   duration?: number;
+  // En stille toast (fx andres spilresultater) skubber aldrig en toast med en knap væk.
+  quiet?: boolean;
 };
 
 type Ask = {
@@ -72,6 +74,8 @@ export function AskProvider({ children }: { children: ReactNode }) {
     leaving: boolean;
   } | null>(null);
   const toastTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // Om toasten, der står nu, har en knap (fx Fortryd).
+  const toastHasAction = useRef(false);
 
   const open = useCallback((next: Pending) => {
     if (leaveTimer.current) clearTimeout(leaveTimer.current);
@@ -95,14 +99,19 @@ export function AskProvider({ children }: { children: ReactNode }) {
     toastTimers.current.forEach(clearTimeout);
     toastTimers.current = [
       setTimeout(() => setToast((t) => (t ? { ...t, leaving: true } : t)), afterMs),
-      setTimeout(() => setToast(null), afterMs + 160),
+      setTimeout(() => {
+        toastHasAction.current = false;
+        setToast(null);
+      }, afterMs + 160),
     ];
   }, []);
   const showToast = useCallback(
     (message: string, options: ToastTone | ToastOptions = "default") => {
-      const o = typeof options === "string" ? { tone: options } : options;
+      const o: ToastOptions = typeof options === "string" ? { tone: options } : options;
+      if (o.quiet && toastHasAction.current) return;
       // Med en knap bliver toasten længere, så man kan nå at trykke.
       const action = o.action;
+      toastHasAction.current = Boolean(action);
       setToast({
         message,
         tone: o.tone ?? "default",

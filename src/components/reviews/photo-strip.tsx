@@ -1,12 +1,12 @@
 "use client";
 
-import { Camera } from "lucide-react";
+import { Camera, ImageOff } from "lucide-react";
 import { useRef, type ChangeEvent } from "react";
-import { usePhotoUrls } from "@/lib/photo-urls";
+import { photoUrlFailed, usePhotoUrls } from "@/lib/photo-urls";
 import type { PendingPhoto, Photo } from "@/lib/reviews-types";
 import { useReviews } from "@/lib/use-reviews";
 import { useAsk } from "../ask";
-import { Button, Spinner } from "../ds";
+import { Button, Icon, Spinner } from "../ds";
 
 const THUMB = 72;
 
@@ -47,6 +47,10 @@ export function PhotoThumbs({
                   className="pc-fade-in h-full w-full object-cover"
                   draggable={false}
                 />
+              ) : photoUrlFailed(p.path) ? (
+                <span className="flex h-full w-full items-center justify-center text-muted">
+                  <Icon name={ImageOff} size={20} />
+                </span>
               ) : (
                 <span className="flex h-full w-full items-center justify-center text-green-800">
                   <Spinner size={16} />

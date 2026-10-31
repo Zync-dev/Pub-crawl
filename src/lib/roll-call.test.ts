@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  allInToastStep,
   isRollCallOpen,
   joinNames,
   LAST_IN_SHOW_MS,
@@ -110,5 +111,33 @@ describe("joinNames", () => {
     expect(joinNames(["Jonas", "Mikkel"])).toBe("Jonas og Mikkel");
     expect(joinNames(["Jonas", "Mikkel", "Freja"])).toBe("Jonas, Mikkel og Freja");
     expect(joinNames(["Jonas", "Mikkel", "Freja", "Bo"])).toBe("Jonas, Mikkel og 2 til");
+  });
+});
+
+describe("allInToastStep", () => {
+  const open = { id: "r1", open: true, closed: false, everyoneIn: false };
+  const closedAll = { id: "r1", open: false, closed: true, everyoneIn: true };
+  const closedMissing = { id: "r1", open: false, closed: true, everyoneIn: false };
+
+  it("viser toasten, når et opråb, man så åbent, lukker med alle", () => {
+    const seen = allInToastStep(null, open, t0).seen;
+    expect(allInToastStep(seen, closedAll, t0 + 1000)).toEqual({ seen: null, toast: true });
+  });
+
+  it("venter et øjeblik på det sidste svar efter lukningen", () => {
+    let seen = allInToastStep(null, open, t0).seen;
+    seen = allInToastStep(seen, closedMissing, t0 + 100).seen;
+    expect(allInToastStep(seen, closedAll, t0 + 900).toast).toBe(true);
+  });
+
+  it("glemmer et opråb, der blev lukket med nogen manglende", () => {
+    let seen = allInToastStep(null, open, t0).seen;
+    seen = allInToastStep(seen, closedMissing, t0 + 100).seen;
+    // 40 minutter senere går den manglende hjem, så alle tilbageværende er med.
+    expect(allInToastStep(seen, closedAll, t0 + 40 * 60_000)).toEqual({ seen: null, toast: false });
+  });
+
+  it("viser intet for et opråb, man aldrig så åbent", () => {
+    expect(allInToastStep(null, closedAll, t0).toast).toBe(false);
   });
 });

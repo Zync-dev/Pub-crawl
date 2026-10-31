@@ -34,7 +34,7 @@ type RoundsContextValue = {
   stops: Stop[];
   userId: string;
   give: (buyer: Member) => Promise<boolean>;
-  undo: (round: Round) => Promise<void>;
+  undo: (round: Round, fromList?: boolean) => Promise<void>;
 };
 
 const RoundsContext = createContext<RoundsContextValue | null>(null);
@@ -64,26 +64,60 @@ export function RoundsProvider({
   children: ReactNode;
 }) {
   const ask = useAsk();
-  const { rounds, loaded, setRounds } = useRounds(crawlId);
+  const { rounds, loaded, setRounds, wrote } = useRounds(crawlId);
+  const nameOf = (buyerId: string) =>
+    buyerId === userId ? "dig" : (members.find((m) => m.user_id === buyerId)?.name ?? null);
 
-  async function give(buyer: Member) {
+  // Gennem give_round (0018): to telefoner, der trykker samtidig, skriver ikke den samme omgang to gange.
+  async function insertRound(buyerId: string, stopId: string | null, force: boolean) {
     const supabase = getSupabase();
-    const row = { crawl_id: crawlId, stop_id: currentStopId, buyer_id: buyer.user_id };
+    const { data, error } = await supabase.rpc("give_round", {
+      p_crawl: crawlId,
+      p_buyer: buyerId,
+      p_stop: stopId,
+      p_force: force,
+    });
+    if (!error && data) return data as { round: Round; existed: boolean };
+    // Uden migration 0018 skrives omgangen direkte som før.
+    if (error?.code === "PGRST202") {
+      const res = await supabase
+        .from("rounds")
+        .insert({ crawl_id: crawlId, stop_id: stopId, buyer_id: buyerId })
+        .select()
+        .single<Round>();
+      if (res.data) return { round: res.data, existed: false };
+    }
+    return null;
+  }
+
+  async function give(buyer: Member, force = false) {
     // Vises med det samme og byttes ud med rækken fra databasen, når den kommer.
     const temp: Round = {
-      ...row,
+      crawl_id: crawlId,
+      stop_id: currentStopId,
+      buyer_id: buyer.user_id,
       id: `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       created_by: userId,
       created_at: new Date().toISOString(),
     };
+    wrote();
     setRounds((prev) => upsertRound(prev, temp));
-    const { data, error } = await supabase.from("rounds").insert(row).select().single<Round>();
-    if (error || !data) {
+    const result = await insertRound(buyer.user_id, currentStopId, force);
+    wrote();
+    if (!result) {
       setRounds((prev) => removeRound(prev, temp.id));
       ask.toast("Omgangen kom ikke med. Prøv igen.", "danger");
       return false;
     }
+    const { round: data, existed } = result;
     setRounds((prev) => upsertRound(removeRound(prev, temp.id), data));
+    // En anden telefon nåede at skrive den samme omgang lige før. Så spørger vi i stedet for at skrive den igen.
+    if (existed) {
+      ask.toast(buyer.user_id === userId ? "Du gav lige. En til?" : `${buyer.name} gav lige. En til?`, {
+        action: { label: "En til", onClick: () => void give(buyer, true) },
+      });
+      return true;
+    }
     // wiring: Fortryd i toasten (som Tjek ind og Videre) og en besked til resten af holdet.
     let undone = false;
     ask.toast(buyer.user_id === userId ? "Omgangen er på dig" : `Omgangen er på ${buyer.name}`, {
@@ -103,14 +137,33 @@ export function RoundsProvider({
     return true;
   }
 
-  async function undo(round: Round) {
+  // Fra listen siger toasten, hvad der skete, og kan lægge omgangen ind igen.
+  async function undo(round: Round, fromList = false) {
     if (round.id.startsWith("tmp-")) return;
+    wrote();
     setRounds((prev) => removeRound(prev, round.id));
     const { error } = await getSupabase().from("rounds").delete().eq("id", round.id);
+    wrote();
     if (error) {
       setRounds((prev) => upsertRound(prev, round));
       ask.toast("Det blev ikke fortrudt. Tjek forbindelsen.", "danger");
+      return;
     }
+    setRounds((prev) => removeRound(prev, round.id));
+    if (fromList) {
+      const name = nameOf(round.buyer_id);
+      ask.toast(name ? `Omgangen på ${name} er fortrudt` : "Omgangen er fortrudt", {
+        action: { label: "Fortryd", onClick: () => void restore(round) },
+      });
+    }
+  }
+
+  async function restore(round: Round) {
+    wrote();
+    const result = await insertRound(round.buyer_id, round.stop_id, true);
+    wrote();
+    if (!result) return ask.toast("Omgangen kom ikke med. Prøv igen.", "danger");
+    setRounds((prev) => upsertRound(prev, result.round));
   }
 
   const value = { rounds, loaded, members, stops, userId, give, undo };
@@ -251,7 +304,7 @@ export function NextRoundCard() {
                       size="sm"
                       icon="undo-2"
                       className="min-h-11"
-                      onClick={() => void undo(r)}
+                      onClick={() => void undo(r, true)}
                       aria-label={`Fortryd omgangen på ${m.name}`}
                     >
                       Fortryd

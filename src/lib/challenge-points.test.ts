@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { challengeOutcome, challengePoints, requiredVotes } from "./challenge-points";
+import { challengeOutcome, challengePoints, competitionRanks, requiredVotes } from "./challenge-points";
 import { insertChallenge } from "./challenge-rows";
 import type { Challenge, ChallengeVote } from "./games-types";
 
@@ -87,6 +87,17 @@ describe("challengePoints", () => {
     expect(scores.every((s) => s.points === 0)).toBe(true);
   });
 
+  it("tæller ikke udfordringer fra fortrudte tjek ind i alt", () => {
+    const { completed, total } = challengePoints(
+      [challenge("undone"), challenge("real"), challenge("now")],
+      [vote("real", "u1", true), vote("real", "u2", true)],
+      people,
+      "now",
+    );
+    expect(completed).toBe(1);
+    expect(total).toBe(2);
+  });
+
   it("sorterer efter point og derefter navn", () => {
     const { scores } = challengePoints([], [], [
       { user_id: "a", name: "Åse" },
@@ -99,6 +110,15 @@ describe("challengePoints", () => {
     const withColor = people.map((p, i) => ({ ...p, color: i }));
     const { scores } = challengePoints([challenge("a")], [vote("a", "u1", true), vote("a", "u2", true)], withColor);
     expect(scores[0].member.color).toBeTypeOf("number");
+  });
+});
+
+describe("competitionRanks", () => {
+  it("giver lige mange point samme plads", () => {
+    expect(competitionRanks([{ points: 3 }, { points: 3 }, { points: 1 }, { points: 0 }, { points: 0 }])).toEqual([
+      1, 1, 3, 4, 4,
+    ]);
+    expect(competitionRanks([])).toEqual([]);
   });
 });
 

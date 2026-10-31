@@ -18,6 +18,7 @@ export function StopReviewNote({ stop, text }: { stop: Stop; text: string }) {
 
 // For besøgte pubs: stjernerne og et tryk til pubbens billeder. Står på kortets egen linje
 // under teksten (StopCards footer), fordi fem stjerner er bredere end tekstkolonnen.
+// Den pub, I er på nu, får sine stjerner under Nu, så her står kun billederne.
 export function StopReviewRating({
   stop,
   status,
@@ -39,16 +40,20 @@ export function StopReviewRating({
     if (!(await reviews.rate(stop.id, stars))) ask.toast("Stjernerne blev ikke gemt. Prøv igen.", "danger");
   }
 
+  if (dark && photos.length === 0) return null;
+
   return (
     <>
       <span className="-ml-2.5 flex flex-wrap items-center gap-x-1" onClick={(e) => e.stopPropagation()}>
-        <StarRating
-          value={summary?.mine ?? null}
-          onChange={(n) => void rate(n)}
-          size={20}
-          tone={dark ? "dark" : "light"}
-          label={`Stjerner til ${stop.name}`}
-        />
+        {!dark && (
+          <StarRating
+            value={summary?.mine ?? null}
+            onChange={(n) => void rate(n)}
+            size={20}
+            tone="light"
+            label={`Stjerner til ${stop.name}`}
+          />
+        )}
         {photos.length > 0 && (
           <button
             type="button"

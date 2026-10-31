@@ -10,48 +10,41 @@ export function prefersReducedMotion() {
   }
 }
 
-// Kort rul gennem tilfældige værdier og så det rigtige resultat. Kun én gang, ingen løkke.
-// Hvis fanen lukkes midt i rullet, gøres det færdigt med det samme, så resultatet stadig sendes.
-export function useRoll<T>(duration = 600, step = 90) {
+// Det gamle resultat dæmpes et øjeblik, og så kommer det nye frem med pc-pop. Ingen løkke.
+// `round` tælles op for hvert nyt resultat, så det også popper, når tallene er de samme.
+// Lukkes fanen midt i (også når Next gemmer siden væk med Activity), gøres det færdigt med
+// det samme: resultatet sendes, og knappen er ikke låst, når man kommer tilbage.
+export function useRoll<T>(duration = 360) {
   const [value, setValue] = useState<T | null>(null);
   const [rolling, setRolling] = useState(false);
+  const [round, setRound] = useState(0);
   const pending = useRef<{ final: T; done: (v: T) => void } | null>(null);
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const finish = useCallback(() => {
-    timers.current.forEach(clearTimeout);
-    timers.current = [];
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
     const p = pending.current;
     pending.current = null;
     if (!p) return;
     setValue(p.final);
     setRolling(false);
+    setRound((n) => n + 1);
     p.done(p.final);
   }, []);
 
   const start = useCallback(
-    (final: T, frame: () => T, done: (v: T) => void) => {
+    (final: T, done: (v: T) => void) => {
       finish();
       pending.current = { final, done };
       if (prefersReducedMotion()) return finish();
       setRolling(true);
-      setValue(frame());
-      const id = setInterval(() => setValue(frame()), step);
-      // clearTimeout rydder også intervallet.
-      timers.current = [id, setTimeout(finish, duration)];
+      timer.current = setTimeout(finish, duration);
     },
-    [duration, step, finish],
+    [duration, finish],
   );
 
-  // Lukkes fanen, sendes resultatet alligevel.
-  const flush = useCallback(() => {
-    timers.current.forEach(clearTimeout);
-    timers.current = [];
-    const p = pending.current;
-    pending.current = null;
-    if (p) p.done(p.final);
-  }, []);
-  useEffect(() => flush, [flush]);
+  useEffect(() => finish, [finish]);
 
-  return { value, rolling, start };
+  return { value, rolling, round, start };
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { cleanPickText, describeResult, flipCoin, parseGameResult, pickRandom, reelSequence, rollDice } from "./games";
+import { cleanPickText, describeResult, flipCoin, parseGameResult, pickRandom, reelSequence, rollbackVote, rollDice } from "./games";
+import type { ChallengeVote } from "./games-types";
 
 const crew = [
   { user_id: "u1", name: "Lukas" },
@@ -29,20 +30,25 @@ describe("tilfældighed", () => {
 });
 
 describe("reelSequence", () => {
-  it("slutter på den valgte og står aldrig stille lige før", () => {
+  it("viser et par andre og slutter på den valgte, uden samme navn to gange i træk", () => {
     for (let start = 0; start < crew.length; start++) {
       vi.spyOn(Math, "random").mockReturnValue((start + 0.5) / crew.length);
       for (const picked of crew) {
         const reel = reelSequence(crew, picked);
         expect(reel.at(-1)).toBe(picked);
-        expect(reel.at(-2)).not.toBe(picked);
-        expect(reel.length).toBeGreaterThanOrEqual(crew.length * 3);
+        expect(reel).toHaveLength(3);
+        expect(reel.slice(0, -1)).not.toContain(picked);
+        reel.slice(1).forEach((p, i) => expect(p).not.toBe(reel[i]));
       }
     }
   });
 
   it("viser bare den valgte, når man er alene", () => {
     expect(reelSequence([crew[0]], crew[0])).toEqual([crew[0]]);
+  });
+
+  it("bliver kortere, når holdet er lille", () => {
+    expect(reelSequence(crew.slice(0, 2), crew[0])).toEqual([crew[1], crew[0]]);
   });
 });
 
@@ -94,8 +100,46 @@ describe("describeResult", () => {
     expect(describeResult({ ...base, kind: "coin", coin: "plat" }, crew)).toBe("Lukas slog plat eller krone: Plat");
   });
 
+  it("taler til den, der læser", () => {
+    expect(describeResult({ ...base, from: "u2", kind: "pick", pick: "u1", text: "hente vand" }, crew, "u1")).toBe(
+      "Du blev valgt: hente vand",
+    );
+    expect(describeResult({ ...base, kind: "dice", dice: [4, 2] }, crew, "u1")).toBe("Du slog 4 og 2 · 6 i alt");
+    expect(describeResult({ ...base, kind: "coin", coin: "krone" }, crew, "u2")).toBe(
+      "Lukas slog plat eller krone: Krone",
+    );
+    expect(describeResult({ ...base, from: "stranger", kind: "coin", coin: "plat" }, crew, "stranger")).toBeNull();
+  });
+
   it("viser intet fra eller om folk, der ikke er på holdet", () => {
     expect(describeResult({ ...base, from: "stranger", kind: "coin", coin: "plat" }, crew)).toBeNull();
     expect(describeResult({ ...base, kind: "pick", pick: "stranger", text: null }, crew)).toBeNull();
+  });
+});
+
+describe("rollbackVote", () => {
+  const vote = (done: boolean, at = "2026-11-06T21:00:00.000Z"): ChallengeVote => ({
+    challenge_id: "a",
+    crawl_id: "c1",
+    user_id: "u1",
+    done,
+    voted_at: at,
+  });
+
+  it("lægger den tidligere stemme tilbage", () => {
+    const before = vote(false);
+    const failed = vote(true);
+    expect(rollbackVote([failed], failed, before)).toEqual([before]);
+  });
+
+  it("fjerner stemmen, hvis der ikke var nogen før", () => {
+    const failed = vote(true);
+    expect(rollbackVote([failed], failed, undefined)).toEqual([]);
+  });
+
+  it("lader en nyere stemme blive", () => {
+    const failed = vote(true);
+    const newer = vote(false, "2026-11-06T21:00:05.000Z");
+    expect(rollbackVote([newer], failed, undefined)).toEqual([newer]);
   });
 });

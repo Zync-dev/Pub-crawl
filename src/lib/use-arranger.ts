@@ -1,11 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
-import { arrangerErrorText, canEditRoute, isArranger, isRouteLocked, type ArrangerCrawl } from "./arranger";
+import { useEffect, useRef, useState } from "react";
+import { arrangerErrorText, canEditRoute, isArranger, isRouteLocked, pickFields, type ArrangerCrawl } from "./arranger";
 import { forgetCrawl, rememberCrawl } from "./recent";
 import { getSupabase } from "./supabase";
-import type { Crawl, Member } from "./types";
+import type { Member } from "./types";
 import type { useCrawl } from "./use-crawl";
 
 type CrawlState = ReturnType<typeof useCrawl>;
@@ -17,8 +16,11 @@ type Result = Promise<string | null>;
 // andre skal reagere på: ny kode, og at man selv er blevet fjernet fra holdet.
 export function useArranger(state: CrawlState, userId: string) {
   const { crawl, members, loaded, patch, refetch } = state;
-  const router = useRouter();
   const crawlId = crawl.id;
+  // Sat, når man er taget af holdet. Så viser appen en forklaring i stedet for turen.
+  const [removed, setRemoved] = useState(false);
+  // Går man selv, skal man ikke have at vide, at man er fjernet.
+  const leaving = useRef(false);
 
   // Ny kode: husk den nye på enheden og ret adressen, så et genindlæs stadig virker.
   const lastCode = useRef(crawl.code);
@@ -27,13 +29,13 @@ export function useArranger(state: CrawlState, userId: string) {
     lastCode.current = crawl.code;
     if (previous === crawl.code) return;
     forgetCrawl(previous);
-    rememberCrawl({ code: crawl.code, name: crawl.name });
+    rememberCrawl({ code: crawl.code, name: crawl.name, id: crawlId });
     if (window.location.pathname.toUpperCase() === `/T/${previous}`) {
       window.history.replaceState(null, "", `/t/${crawl.code}`);
     }
-  }, [crawl.code, crawl.name]);
+  }, [crawl.code, crawl.name, crawlId]);
 
-  // Er man ikke længere på holdet (fjernet af arrangøren), sendes man til forsiden.
+  // Er man ikke længere på holdet (fjernet af arrangøren), glemmes turen, og appen siger hvorfor.
   const wasMember = useRef(false);
   const meInCrew = members.some((m) => m.user_id === userId);
   useEffect(() => {
@@ -45,8 +47,8 @@ export function useArranger(state: CrawlState, userId: string) {
     if (!wasMember.current) return;
     wasMember.current = false;
     forgetCrawl(crawl.code);
-    router.replace("/");
-  }, [loaded, meInCrew, crawl.code, router]);
+    if (!leaving.current) setRemoved(true);
+  }, [loaded, meInCrew, crawl.code]);
 
   // Slettede deltagere kan ikke filtreres på crawl_id, så vi lytter selv og henter igen.
   useEffect(() => {
@@ -63,18 +65,20 @@ export function useArranger(state: CrawlState, userId: string) {
     };
   }, [crawlId, refetch]);
 
-  function applyCrawl(row: Crawl | null) {
-    if (row) patch((p) => ({ ...p, crawl: { ...p.crawl, ...row } }));
-  }
-
-  async function callCrawl(fn: string, args: Record<string, unknown>): Result {
-    const { data, error } = await getSupabase().rpc(fn, args).single<Crawl>();
+  // Kun de felter, funktionen ændrer. Resten af rækken kan være ældre end det, Realtime allerede har givet os.
+  async function callCrawl(fn: string, args: Record<string, unknown>, fields: (keyof ArrangerCrawl)[]): Result {
+    const { data, error } = await getSupabase().rpc(fn, args).single<ArrangerCrawl>();
     if (error) return arrangerErrorText(error);
-    applyCrawl(data);
+    if (data) patch((p) => ({ ...p, crawl: { ...p.crawl, ...pickFields(data, fields) } }));
     return null;
   }
 
   return {
+    removed,
+    // Kaldes før og efter, man selv forlader turen.
+    setLeaving(value: boolean) {
+      leaving.current = value;
+    },
     isArranger: isArranger(crawl, userId),
     canEditRoute: canEditRoute(crawl, userId),
     async setRouteLocked(locked: boolean): Result {
@@ -82,7 +86,7 @@ export function useArranger(state: CrawlState, userId: string) {
       const set = (value: boolean) =>
         patch((p) => ({ ...p, crawl: { ...p.crawl, route_locked: value } as ArrangerCrawl }));
       set(locked);
-      const error = await callCrawl("set_route_locked", { p_crawl: crawlId, p_locked: locked });
+      const error = await callCrawl("set_route_locked", { p_crawl: crawlId, p_locked: locked }, ["route_locked"]);
       if (error) set(was);
       return error;
     },
@@ -98,10 +102,10 @@ export function useArranger(state: CrawlState, userId: string) {
       return null;
     },
     rotateCode(): Result {
-      return callCrawl("rotate_code", { p_crawl: crawlId });
+      return callCrawl("rotate_code", { p_crawl: crawlId }, ["code"]);
     },
     transferRole(member: Member): Result {
-      return callCrawl("transfer_arranger", { p_crawl: crawlId, p_user: member.user_id });
+      return callCrawl("transfer_arranger", { p_crawl: crawlId, p_user: member.user_id }, ["created_by"]);
     },
   };
 }

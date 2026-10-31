@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arrangerErrorText, canEditRoute, isArranger, isRouteLocked, ROUTE_LOCKED_TEXT } from "./arranger";
+import { arrangerErrorText, canEditRoute, isArranger, isRouteLocked, pickFields, ROUTE_LOCKED_TEXT } from "./arranger";
 import { crawl } from "./test-fixtures";
 import type { Crawl } from "./types";
 
@@ -36,5 +36,13 @@ describe("arrangerErrorText", () => {
   it("falder tilbage til forbindelsen", () => {
     expect(arrangerErrorText({ message: "fetch failed" })).toBe("Det blev ikke gemt. Tjek forbindelsen.");
     expect(arrangerErrorText(null)).toBe("Det blev ikke gemt. Tjek forbindelsen.");
+  });
+});
+
+describe("pickFields", () => {
+  it("tager kun de felter, RPC'en ændrer, så en ældre række ikke overskriver tjek ind", () => {
+    const row = { ...crawl(), route_locked: true, current_stop_id: null, code: "NEWONE" };
+    expect(pickFields(row, ["route_locked"])).toEqual({ route_locked: true });
+    expect(pickFields(row, ["code", "created_by"])).toEqual({ code: "NEWONE", created_by: row.created_by });
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   LAST_IN_SHOW_MS,
   isRollCallOpen,
@@ -54,27 +54,36 @@ export function useRollCall(
     });
   }, []);
 
+  // Tælles op ved hver lokal skrivning. Et svar på en hentning, der gik i gang før, kan mangle
+  // ens eget svar, så det smides væk, og vi henter igen.
+  const writes = useRef(0);
+
   const refetch = useCallback(async () => {
     const supabase = getSupabase();
-    const { data } = await supabase
-      .from("roll_calls")
-      .select("*")
-      .eq("crawl_id", crawlId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .returns<RollCall[]>();
-    const latest = data?.[0] ?? null;
-    if (!latest) return;
-    const answers = await supabase
-      .from("roll_call_answers")
-      .select("*")
-      .eq("roll_call_id", latest.id)
-      .returns<RollCallAnswer[]>();
-    setCall(latest);
-    // Svarene for det seneste opråb erstattes helt, så svar fra folk, der er gået hjem, forsvinder.
-    if (answers.data) {
-      const rows = answers.data;
-      setAllAnswers((prev) => [...prev.filter((a) => a.roll_call_id !== latest.id), ...rows]);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const version = writes.current;
+      const { data } = await supabase
+        .from("roll_calls")
+        .select("*")
+        .eq("crawl_id", crawlId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .returns<RollCall[]>();
+      const latest = data?.[0] ?? null;
+      if (!latest) return;
+      const answers = await supabase
+        .from("roll_call_answers")
+        .select("*")
+        .eq("roll_call_id", latest.id)
+        .returns<RollCallAnswer[]>();
+      if (version !== writes.current) continue;
+      setCall(latest);
+      // Svarene for det seneste opråb erstattes helt, så svar fra folk, der er gået hjem, forsvinder.
+      if (answers.data) {
+        const rows = answers.data;
+        setAllAnswers((prev) => [...prev.filter((a) => a.roll_call_id !== latest.id), ...rows]);
+      }
+      return;
     }
   }, [crawlId]);
 
@@ -136,9 +145,11 @@ export function useRollCall(
     // Et opråb giver kun mening, når man er flere.
     if (members.length < 2 || busy) return false;
     setBusy("start");
+    writes.current++;
     const { data, error } = await getSupabase()
       .rpc("start_roll_call", { p_crawl: crawlId, p_from_stop: fromStopId, p_to_stop: toStopId })
       .single<RollCall>();
+    writes.current++;
     setBusy(null);
     if (error || !data) {
       onError?.(errorText(error));
@@ -161,9 +172,11 @@ export function useRollCall(
     };
     addAnswers([temp]);
     setBusy("answer");
+    writes.current++;
     const { data, error } = await getSupabase()
       .rpc("answer_roll_call", { p_roll_call: call.id })
       .single<RollCall>();
+    writes.current++;
     setBusy(null);
     if (error || !data) {
       setAllAnswers((prev) => prev.filter((a) => a !== temp));
