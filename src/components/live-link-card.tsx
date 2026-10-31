@@ -9,11 +9,20 @@ import { useAsk } from "./ask";
 import { Button, Card, Icon } from "./ds";
 
 // "Sent på den?": et link, der viser ruten og hvor holdet er, uden navne eller drinks.
-export function LiveLinkCard({ crawl, userId }: { crawl: Crawl; userId: string }) {
+export function LiveLinkCard({
+  crawl,
+  userId,
+  onRotated,
+}: {
+  crawl: Crawl;
+  userId: string;
+  // Lægger det nye link i turens fælles tilstand, så det overlever, at kortet tegnes igen.
+  onRotated?: (token: string) => void;
+}) {
   const ask = useAsk();
   // Linket står på turens række (select("*") henter det), men findes ikke i Crawl-typen.
   const fromRow = (crawl as Crawl & WithShareToken).share_token ?? null;
-  // Et nyt link fra rotate_share_token gælder, indtil Realtime sender rækken igen.
+  // Et nyt link fra rotate_share_token gælder, også hvis en gammel hentning skriver rækken tilbage.
   const [rotated, setRotated] = useState<{ from: string | null; token: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -32,7 +41,15 @@ export function LiveLinkCard({ crawl, userId }: { crawl: Crawl; userId: string }
       ask.toast("Live-linket er kopieret");
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      ask.toast(`Linket: ${url(current)}`);
+      // Uden adgang til udklipsholderen (fx iOS efter delearket) vises linket, så det kan markeres.
+      await ask.prompt({
+        eyebrow: "Live-linket",
+        title: "Kopiér linket herfra",
+        label: "Linket",
+        initial: url(current),
+        confirm: "Færdig",
+        maxLength: 500,
+      });
     }
   }
 
@@ -47,8 +64,10 @@ export function LiveLinkCard({ crawl, userId }: { crawl: Crawl; userId: string }
         });
         return;
       }
-    } catch {
-      // Delingen blev lukket. Så kopierer vi i stedet.
+    } catch (err) {
+      // Lukkede man selv delearket, skal der ikke ske mere.
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      // Ellers virker delingen ikke her. Så kopierer vi i stedet.
     }
     await copy();
   }
@@ -71,6 +90,7 @@ export function LiveLinkCard({ crawl, userId }: { crawl: Crawl; userId: string }
       return;
     }
     setRotated({ from: fromRow, token: data });
+    onRotated?.(data);
     ask.toast("Nyt live-link er klar");
   }
 

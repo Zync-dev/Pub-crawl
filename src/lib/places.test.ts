@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { boundsAround, nearbyBars, searchPlaces } from "./places";
+import { boundsAround, nearbyBars, placeKind, placeName, searchPlaces } from "./places";
 
 type Handler = (url: URL, init?: RequestInit) => Response | Promise<Response>;
 
@@ -42,14 +42,30 @@ describe("searchPlaces", () => {
     expect(url.searchParams.get("countrycodes")).toBe("dk");
     expect(url.searchParams.get("viewbox")).toBe(`${bounds.west},${bounds.north},${bounds.east},${bounds.south}`);
     expect(places).toEqual([
-      { id: "n1", name: "Charlie Scott's", lat: 55.6761, lng: 12.5683, kind: "pub" },
-      { id: "n2", name: "Bar 7", lat: 55.6761, lng: 12.5683, kind: "bar" },
+      { id: "n1", name: "Charlie Scott's", lat: 55.6761, lng: 12.5683, kind: "Pub" },
+      { id: "n2", name: "Bar 7", lat: 55.6761, lng: 12.5683, kind: "Bar" },
     ]);
   });
 
   it("kaster, når Nominatim svarer med fejl", async () => {
     mockFetch(() => json({}, 503));
     await expect(searchPlaces("x", bounds)).rejects.toThrow("search_failed");
+  });
+});
+
+describe("placeName og placeKind", () => {
+  it("laver en adresse uden navn om til gade og husnummer", () => {
+    const r = { name: "", display_name: "3, Vesterbrogade, Vesterbro, København V, 1620, Danmark", type: "house" };
+    expect(placeName(r)).toBe("Vesterbrogade 3");
+    expect(placeKind(r)).toBe("Adresse");
+  });
+
+  it("skriver typen på dansk og viser ellers stedet i stedet for det engelske ord", () => {
+    expect(placeKind({ name: "Ølbaren", display_name: "Ølbaren, Nørrebro", type: "biergarten" })).toBe("Ølhave");
+    expect(
+      placeKind({ name: "Kongens Nytorv", display_name: "Kongens Nytorv, Indre By, København K, Danmark", type: "square" }),
+    ).toBe("Indre By, København K");
+    expect(placeKind({ name: "X", display_name: "X", type: "bus_stop" })).toBe("Sted");
   });
 });
 
@@ -69,6 +85,19 @@ describe("nearbyBars", () => {
     expect(bars.map((b) => b.name).sort()).toEqual(["Lidkoeb", "Mikkeller"]);
   });
 
+  it("venter et sekund mellem de to søgninger og beholder pubberne, når barsøgningen fejler", async () => {
+    const times: number[] = [];
+    const fetch = mockFetch((url) => {
+      times.push(Date.now());
+      if (url.host !== "nominatim.openstreetmap.org") throw new Error("Overpass skal ikke spørges");
+      return url.searchParams.get("q") === "pub" ? json([row(1, "Hviids", "pub")]) : json({}, 429);
+    });
+    const bars = await nearbyBars(bounds);
+    expect(bars.map((b) => b.name)).toEqual(["Hviids"]);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(times[1] - times[0]).toBeGreaterThanOrEqual(990);
+  });
+
   it("falder tilbage til Overpass, når Nominatim intet finder", async () => {
     const fetch = mockFetch((url, init) => {
       if (url.host === "nominatim.openstreetmap.org") return json([]);
@@ -83,8 +112,8 @@ describe("nearbyBars", () => {
     });
     const bars = await nearbyBars(bounds);
     expect(bars).toEqual([
-      { id: "node10", name: "Bodega", lat: 55.68, lng: 12.57, kind: "pub" },
-      { id: "way11", name: "Bar", lat: 55.69, lng: 12.58, kind: "biergarten" },
+      { id: "node10", name: "Bodega", lat: 55.68, lng: 12.57, kind: "Pub" },
+      { id: "way11", name: "Bar", lat: 55.69, lng: 12.58, kind: "Ølhave" },
     ]);
     expect(fetch.mock.calls.some(([u]) => String(u).includes("overpass"))).toBe(true);
   });

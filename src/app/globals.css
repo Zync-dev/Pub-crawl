@@ -280,6 +280,11 @@ a:focus-visible {
   border: none;
 }
 
+/* Rutens streg på kortet. Leaflet sætter stroke som attribut, og CSS vinder over den. */
+.pc-route-line {
+  stroke: var(--green-800);
+}
+
 .map-adding .leaflet-container,
 .map-adding .leaflet-interactive {
   cursor: crosshair;

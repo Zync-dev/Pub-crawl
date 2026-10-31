@@ -228,6 +228,7 @@ export function StopCard({
   status = "upcoming",
   onClick,
   children,
+  footer,
 }: {
   number: number;
   total?: number;
@@ -237,10 +238,16 @@ export function StopCard({
   status?: "upcoming" | "current" | "done";
   onClick?: () => void;
   children?: ReactNode;
+  // Knapper og stjerner på en linje for sig under teksten, så navnet beholder bredden.
+  footer?: ReactNode;
 }) {
   const done = status === "done";
   return (
-    <div className={`pc-stop pc-stop--${status}`} onClick={onClick} style={onClick ? undefined : { cursor: "default" }}>
+    <div
+      className={`pc-stop pc-stop--${status}${footer ? " flex-wrap" : ""}`}
+      onClick={onClick}
+      style={onClick ? undefined : { cursor: "default" }}
+    >
       <div className="pc-stop__num">{done ? <Icon name="check" size={18} /> : number}</div>
       <div className="pc-stop__main">
         <div className="pc-stop__meta">
@@ -253,6 +260,7 @@ export function StopCard({
       </div>
       {status === "current" && <Badge tone="gold">Nu</Badge>}
       {children}
+      {footer && <div className="flex basis-full flex-col gap-2">{footer}</div>}
     </div>
   );
 }
