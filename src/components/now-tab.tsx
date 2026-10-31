@@ -7,6 +7,8 @@ import { formatClock } from "@/lib/timer";
 import type { Crawl, Drink, DrinkKind, Stop } from "@/lib/types";
 import { useAsk } from "./ask";
 import type { CrawlActions } from "./crawl-app";
+// nav-live: Vis vej
+import { DirectionsButton } from "./directions-button";
 import { Button, Card, Icon, SectionTitle } from "./ds";
 import { NextRoundCard } from "./rounds"; // Omgange
 
@@ -133,6 +135,8 @@ function AtPub({
             Videre
           </Button>
         </div>
+        {/* nav-live: Vis vej hertil, til dem, der ikke er nået frem endnu. */}
+        <DirectionsButton to={stop} name={stop.name} variant="ghost" label="Vis vej hertil" />
       </Card>
 
       {crawl.challenge && (
@@ -197,6 +201,8 @@ function OnTheWay({
       <Button variant="gold" size="lg" icon="stamp" fullWidth onClick={() => void actions.arrive(nextStop)}>
         Tjek ind
       </Button>
+      {/* nav-live: Vis vej */}
+      <DirectionsButton to={nextStop} name={nextStop.name} fullWidth />
       <Button variant="ghost" size="sm" icon="route" onClick={onOpenRoute}>
         Se ruten
       </Button>
