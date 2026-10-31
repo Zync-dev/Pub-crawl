@@ -8,6 +8,7 @@ import { Avatar, Badge, Card, Icon, SectionTitle } from "./ds";
 import { ChallengeRanking } from "./games/challenge-ranking"; // games: udfordringspoint
 import { RoundsStandings } from "./rounds"; // Omgange
 import { BestPub } from "./reviews/best-pub"; // pub-reviews
+import { RecapCard } from "./recap/recap-link"; // recap: Aftenens regnskab
 
 export function StatsTab({
   members,
@@ -32,6 +33,8 @@ export function StatsTab({
   if (!drinks.length) {
     return (
       <div className="flex flex-col gap-6 px-4 py-[18px]">
+        {/* recap: Aftenens regnskab */}
+        <RecapCard />
         <Card variant="framed" className="text-center">
           <p className="pc-label mb-2 text-oxblood-700">Ingen drinks endnu</p>
           <p className="text-muted">Når I skriver drinks ind under Nu, kommer stillingen her.</p>
@@ -48,6 +51,8 @@ export function StatsTab({
 
   return (
     <div className="flex flex-col gap-6 px-4 py-[18px]">
+      {/* recap: Aftenens regnskab */}
+      <RecapCard />
       <section>
         <SectionTitle eyebrow="Flest genstande" title="Hvem fører?" />
         <ol className="flex flex-col gap-2.5">

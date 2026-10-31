@@ -17,6 +17,7 @@ import { ChallengeVoting } from "./games/challenge-voting"; // games: stemmer om
 import { RollCallCard, RollCallStarter, useRollCallContext } from "./roll-call"; // Er alle med? (rollcall)
 import { NextRoundCard } from "./rounds"; // Omgange
 import { AtPubReviews } from "./reviews/at-pub-reviews"; // pub-reviews
+import { RecapButton } from "./recap/recap-link"; // recap: Aftenens regnskab
 
 export function NowTab({
   crawl,
@@ -236,6 +237,8 @@ function OnTheWay({
       <Card variant="framed" className="flex flex-col gap-3 text-center">
         <p className="pc-label text-oxblood-700">Sidste omgang er drukket</p>
         <p className="font-serif text-[24px] leading-tight">Ruten er gået. Godt gået.</p>
+        {/* recap: Aftenens regnskab */}
+        <RecapButton />
         <Button variant="secondary" icon="plus" fullWidth onClick={onOpenRoute}>
           Én pub mere
         </Button>
