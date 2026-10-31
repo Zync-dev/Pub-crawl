@@ -6,6 +6,7 @@ import { DEFAULT_CENTER, distanceMeters, formatDistance, walkingMinutes } from "
 import { boundsAround, nearbyBars, searchPlaces, type Bounds } from "@/lib/places";
 import { formatTime } from "@/lib/timer";
 import type { LatLng, Member, NearbyPlace, Stop } from "@/lib/types";
+import { RouteLockedNote } from "./arranger-card"; // arranger: låst rute
 import { useAsk } from "./ask";
 import type { CrawlActions } from "./crawl-app";
 import { Button, Card, IconButton, Input, SectionTitle, Spinner, StopCard } from "./ds";
@@ -29,6 +30,7 @@ export function MapTab({
   myPosition,
   now,
   actions,
+  routeLocked = false,
 }: {
   visible: boolean;
   stops: Stop[];
@@ -38,6 +40,8 @@ export function MapTab({
   myPosition: LatLng | null;
   now: number;
   actions: CrawlActions;
+  // arranger: sand, når arrangøren har låst ruten, og man ikke selv er arrangør.
+  routeLocked?: boolean;
 }) {
   const ask = useAsk();
   const view = useRef<Bounds>(boundsAround(DEFAULT_CENTER, 0.01));
@@ -61,7 +65,7 @@ export function MapTab({
   }
 
   async function onMapClick(at: LatLng) {
-    if (!adding) return;
+    if (!adding || routeLocked) return;
     setAdding(false);
     const name = await ask.prompt({
       eyebrow: "Ny pub",
@@ -74,6 +78,7 @@ export function MapTab({
   }
 
   async function onPickNearby(place: NearbyPlace) {
+    if (routeLocked) return;
     const ok = await ask.confirm({
       eyebrow: "Fundet på kortet",
       title: place.name,
@@ -129,7 +134,7 @@ export function MapTab({
           myPosition={myPosition}
           currentStopId={currentStopId}
           nearby={nearby}
-          adding={adding}
+          adding={adding && !routeLocked}
           focus={focus}
           now={now}
           onMapClick={(at) => void onMapClick(at)}
@@ -137,7 +142,7 @@ export function MapTab({
           onViewChange={(b) => (view.current = b)}
           visible={visible}
         />
-        {adding && (
+        {adding && !routeLocked && (
           <div className="pointer-events-none absolute inset-x-0 top-3 z-[1000] flex justify-center">
             <span className="pc-badge pc-badge--green">Tryk der, hvor pubben ligger</span>
           </div>
@@ -145,19 +150,20 @@ export function MapTab({
         <div className="pointer-events-none absolute inset-x-3 bottom-3 z-[1000] flex items-end justify-between gap-2">
           <div className="pointer-events-auto flex gap-2">
             <Button
-              variant={adding ? "gold" : "primary"}
+              variant={adding && !routeLocked ? "gold" : "primary"}
               size="sm"
-              icon={adding ? "x" : "plus"}
+              icon={adding && !routeLocked ? "x" : "plus"}
+              disabled={routeLocked}
               onClick={() => setAdding((a) => !a)}
             >
-              {adding ? "Fortryd" : "Sæt en pub"}
+              {adding && !routeLocked ? "Fortryd" : "Sæt en pub"}
             </Button>
             <Button
               variant="primary"
               size="sm"
               icon="search"
               loading={busy === "nearby"}
-              disabled={busy !== null}
+              disabled={busy !== null || routeLocked}
               onClick={() => void findNearby()}
             >
               Pubs her
@@ -172,6 +178,7 @@ export function MapTab({
       </div>
 
       <div className="flex flex-col gap-4 px-4 py-[18px]">
+        {routeLocked && <RouteLockedNote />}
         <form onSubmit={search} className="flex items-end gap-2">
           <Input
             className="flex-1"
@@ -208,7 +215,7 @@ export function MapTab({
                     <span className="block truncate font-semibold">{r.name}</span>
                     <span className="pc-label text-muted">{r.kind}</span>
                   </button>
-                  <Button variant="secondary" size="sm" icon="plus" onClick={() => void add(r.name, r)}>
+                  <Button variant="secondary" size="sm" icon="plus" disabled={routeLocked} onClick={() => void add(r.name, r)}>
                     Tilføj
                   </Button>
                 </li>
@@ -228,6 +235,7 @@ export function MapTab({
           myPosition={myPosition}
           actions={actions}
           onFocus={focusOn}
+          locked={routeLocked}
         />
       </div>
     </div>
@@ -240,15 +248,19 @@ function RouteList({
   myPosition,
   actions,
   onFocus,
+  locked = false,
 }: {
   stops: Stop[];
   currentStopId: string | null;
   myPosition: LatLng | null;
   actions: CrawlActions;
   onFocus: (at: LatLng) => void;
+  locked?: boolean;
 }) {
   const ask = useAsk();
-  const [editing, setEditing] = useState(false);
+  const [editingState, setEditing] = useState(false);
+  // arranger: en låst rute kan ikke rettes, heller ikke hvis man var i gang.
+  const editing = editingState && !locked;
 
   if (!stops.length) {
     return (
@@ -270,7 +282,7 @@ function RouteList({
         eyebrow={editing ? "Ret ruten" : "Tryk for at se på kortet"}
         title="Pubberne"
         right={
-          <Button variant="ghost" size="sm" icon={editing ? "check" : "pencil"} onClick={() => setEditing((e) => !e)}>
+          <Button variant="ghost" size="sm" icon={editing ? "check" : "pencil"} disabled={locked} onClick={() => setEditing(!editing)}>
             {editing ? "Færdig" : "Ret"}
           </Button>
         }
