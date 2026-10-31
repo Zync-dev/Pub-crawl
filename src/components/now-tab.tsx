@@ -1,5 +1,6 @@
 "use client";
 
+import { CloudOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { DRINK_BY_KIND, DRINK_KINDS, formatUnits } from "@/lib/drinks";
 import { formatAgo } from "@/lib/geo";
@@ -20,6 +21,7 @@ export function NowTab({
   now,
   actions,
   onOpenRoute,
+  pendingDrinkIds,
 }: {
   crawl: Crawl;
   stops: Stop[];
@@ -31,6 +33,8 @@ export function NowTab({
   now: number;
   actions: CrawlActions;
   onOpenRoute: () => void;
+  // offline-undo: drinks, der venter på net, får et lille mærke i Dine seneste.
+  pendingDrinkIds?: ReadonlySet<string>;
 }) {
   return (
     <div className="flex flex-col gap-4 px-4 py-[18px]">
@@ -39,7 +43,15 @@ export function NowTab({
       ) : (
         <OnTheWay stops={stops} nextStop={nextStop} actions={actions} onOpenRoute={onOpenRoute} />
       )}
-      <Drinks drinks={drinks} stops={stops} userId={userId} currentStop={currentStop} now={now} actions={actions} />
+      <Drinks
+        drinks={drinks}
+        stops={stops}
+        userId={userId}
+        currentStop={currentStop}
+        now={now}
+        actions={actions}
+        pendingDrinkIds={pendingDrinkIds}
+      />
     </div>
   );
 }
@@ -208,6 +220,7 @@ function Drinks({
   currentStop,
   now,
   actions,
+  pendingDrinkIds,
 }: {
   drinks: Drink[];
   stops: Stop[];
@@ -215,6 +228,7 @@ function Drinks({
   currentStop: Stop | null;
   now: number;
   actions: CrawlActions;
+  pendingDrinkIds?: ReadonlySet<string>;
 }) {
   const [flash, setFlash] = useState<DrinkKind | null>(null);
   const [floats, setFloats] = useState<{ id: number; kind: DrinkKind }[]>([]);
@@ -310,6 +324,13 @@ function Drinks({
                       <span className="block truncate text-[13px] text-muted">
                         {formatAgo(d.created_at, now)}
                         {stopName(d.stop_id) && ` · ${stopName(d.stop_id)}`}
+                        {pendingDrinkIds?.has(d.id) && (
+                          <>
+                            {" · "}
+                            <Icon name={CloudOff} size={12} style={{ display: "inline", verticalAlign: "-1px" }} />
+                            {" venter på net"}
+                          </>
+                        )}
                       </span>
                     </span>
                     <Button

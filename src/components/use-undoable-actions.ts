@@ -1,0 +1,209 @@
+"use client";
+
+import { drawChallenge } from "@/lib/challenges";
+import { getSupabase } from "@/lib/supabase";
+import type { Crawl, Stop } from "@/lib/types";
+import type { CrawlData } from "@/lib/use-crawl";
+import type { HeldView, HoldChange, HoldHandle } from "@/lib/use-holds";
+import { useAsk } from "./ask";
+
+// Tjek ind, Videre og Fjern pub med "Fortryd" i toasten i ca. 6 sekunder.
+// Fortryd skriver kun, hvis turen stadig ser ud, som vi efterlod den, så to telefoner
+// ikke fortryder hinandens ændringer, og et dobbelttryk gør ingenting anden gang.
+
+type CrawlFields = Pick<Crawl, "current_stop_id" | "arrived_at" | "challenge">;
+
+const UNDO_MS = 6_000;
+const NOBODY: CrawlFields = { current_stop_id: null, arrived_at: null, challenge: null };
+
+const byPosition = (a: Stop, b: Stop) => a.position - b.position || a.created_at.localeCompare(b.created_at);
+
+const fieldsOf = (crawl: Crawl): CrawlFields => ({
+  current_stop_id: crawl.current_stop_id,
+  arrived_at: crawl.arrived_at,
+  challenge: crawl.challenge,
+});
+
+// Sætter turens felter og eventuelt én pubs visited_at.
+function withCrawl(fields: CrawlFields, visited?: { stopId: string; at: string | null }): HoldChange {
+  return (v) => ({
+    crawl: { ...v.crawl, ...fields },
+    stops: visited ? v.stops.map((s) => (s.id === visited.stopId ? { ...s, visited_at: visited.at } : s)) : v.stops,
+  });
+}
+
+// Kan kun køres én gang, uanset hvor mange gange der trykkes.
+function once(fn: () => Promise<void>) {
+  let used = false;
+  return () => {
+    if (used) return;
+    used = true;
+    void fn();
+  };
+}
+
+export type UndoableActions = ReturnType<typeof useUndoableActions>;
+
+export function useUndoableActions({
+  crawl,
+  stops,
+  memberNames,
+  patch,
+  refetch,
+  hold,
+}: {
+  crawl: Crawl;
+  stops: Stop[];
+  memberNames: string[];
+  patch: (update: (prev: CrawlData) => CrawlData) => void;
+  refetch: () => Promise<void>;
+  hold: (key: string, change: HoldChange) => HoldHandle;
+}) {
+  const supabase = getSupabase();
+  const ask = useAsk();
+  const id = crawl.id;
+
+  async function run(request: PromiseLike<{ error: unknown }>) {
+    const { error } = await request;
+    if (error) ask.toast("Det blev ikke gemt. Tjek forbindelsen.", "danger");
+    return !error;
+  }
+
+  // Ændringen lægges i data og holdes fast, til skrivningen er færdig og ekkoet er kommet.
+  function show(key: string, change: HoldChange) {
+    patch((p) => ({ ...p, ...change({ crawl: p.crawl, stops: p.stops }) }));
+    return hold(key, change);
+  }
+
+  // Fortryd lykkedes ikke: vis det, vi havde, og hent turen igen, så vi ser det samme som holdet.
+  function failed(back: HoldHandle, redo: HoldChange, error: { code?: string } | null) {
+    back.drop();
+    patch((p) => ({ ...p, ...redo({ crawl: p.crawl, stops: p.stops } satisfies HeldView) }));
+    void refetch();
+    ask.toast(
+      !error
+        ? "Holdet nåede at ændre det."
+        : error.code === "23503"
+          ? "Pubben er ikke på ruten længere."
+          : "Det blev ikke fortrudt. Tjek forbindelsen.",
+      "danger",
+    );
+  }
+
+  function offerUndo(message: string, undo: () => Promise<void>) {
+    ask.toast(message, { action: { label: "Fortryd", onClick: once(undo) }, duration: UNDO_MS });
+  }
+
+  return {
+    async arrive(stop: Stop) {
+      const now = new Date().toISOString();
+      const before = fieldsOf(crawl);
+      const after: CrawlFields = {
+        current_stop_id: stop.id,
+        arrived_at: now,
+        challenge: drawChallenge(memberNames, crawl.challenge),
+      };
+      const visitedBefore = stop.visited_at;
+      const forward = withCrawl(after, { stopId: stop.id, at: visitedBefore ?? now });
+      const held = show("crawl", forward);
+      let ok = true;
+      if (!visitedBefore) {
+        ok = await run(supabase.from("stops").update({ visited_at: now }).eq("id", stop.id));
+      }
+      ok = (await run(supabase.from("crawls").update(after).eq("id", id))) && ok;
+      held.release();
+      if (!ok) return;
+
+      offerUndo(`Tjekket ind på ${stop.name}`, async () => {
+        const back = show("crawl", withCrawl(before, { stopId: stop.id, at: visitedBefore }));
+        const { data, error } = await supabase
+          .from("crawls")
+          .update(before)
+          .eq("id", id)
+          .eq("current_stop_id", stop.id)
+          .eq("arrived_at", now)
+          .select("id");
+        if (error || !data?.length) return failed(back, forward, error);
+        if (!visitedBefore) {
+          const visited = await supabase
+            .from("stops")
+            .update({ visited_at: null })
+            .eq("id", stop.id)
+            .eq("visited_at", now);
+          if (visited.error) return failed(back, withCrawl(before), visited.error);
+        }
+        back.release();
+        ask.toast("Tjek ind er fortrudt");
+      });
+    },
+
+    async leave() {
+      const before = fieldsOf(crawl);
+      const stop = stops.find((s) => s.id === crawl.current_stop_id);
+      const forward = withCrawl(NOBODY);
+      const held = show("crawl", forward);
+      const ok = await run(supabase.from("crawls").update(NOBODY).eq("id", id));
+      held.release();
+      if (!ok || !before.current_stop_id) return;
+
+      offerUndo(stop ? `Videre fra ${stop.name}` : "I er videre", async () => {
+        const back = show("crawl", withCrawl(before));
+        // Kun hvis ingen er tjekket ind et andet sted i mellemtiden.
+        const { data, error } = await supabase
+          .from("crawls")
+          .update(before)
+          .eq("id", id)
+          .is("current_stop_id", null)
+          .select("id");
+        if (error || !data?.length) return failed(back, forward, error);
+        back.release();
+        ask.toast(stop ? `Tilbage på ${stop.name}` : "Videre er fortrudt");
+      });
+    },
+
+    async deleteStop(stop: Stop) {
+      const wasCurrent = crawl.current_stop_id === stop.id;
+      const before = fieldsOf(crawl);
+      const key = `stop:${stop.id}`;
+      // Databasen sætter current_stop_id til null, når den nuværende pub slettes. Det gør vi også.
+      const removed: HoldChange = (v) => ({
+        crawl: wasCurrent && v.crawl.current_stop_id === stop.id ? { ...v.crawl, current_stop_id: null } : v.crawl,
+        stops: v.stops.filter((s) => s.id !== stop.id),
+      });
+      const held = show(key, removed);
+      const ok = await run(supabase.from("stops").delete().eq("id", stop.id));
+      held.release();
+      if (!ok) return;
+
+      offerUndo(`${stop.name} er fjernet fra ruten`, async () => {
+        const restored: HoldChange = (v) => ({
+          crawl: wasCurrent && !v.crawl.current_stop_id ? { ...v.crawl, ...before } : v.crawl,
+          stops: [...v.stops.filter((s) => s.id !== stop.id), stop].sort(byPosition),
+        });
+        const back = show(key, restored);
+        // Samme id, så det er den samme pub igen. Findes den allerede, sker der ingenting.
+        const { error } = await supabase.from("stops").upsert(
+          {
+            id: stop.id,
+            crawl_id: stop.crawl_id,
+            name: stop.name,
+            lat: stop.lat,
+            lng: stop.lng,
+            position: stop.position,
+            minutes: stop.minutes,
+            visited_at: stop.visited_at,
+            created_at: stop.created_at,
+          },
+          { onConflict: "id", ignoreDuplicates: true },
+        );
+        if (error) return failed(back, removed, error);
+        if (wasCurrent) {
+          // Var det pubben, vi stod på, står vi der igen, medmindre holdet er gået et andet sted hen.
+          await supabase.from("crawls").update(before).eq("id", id).is("current_stop_id", null);
+        }
+        back.release();
+        ask.toast(`${stop.name} er tilbage på ruten`);
+      });
+    },
+  };
+}

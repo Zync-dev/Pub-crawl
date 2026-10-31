@@ -346,16 +346,32 @@ export function Toast({
   tone = "default",
   icon,
   leaving,
+  action,
 }: {
   message: string;
   tone?: "default" | "danger";
   icon?: IconName;
   leaving?: boolean;
+  // offline-undo: en knap i toasten, fx "Fortryd". Ghost-knap i guld som andre knapper på mørk bund.
+  action?: { label: string; onClick: () => void };
 }) {
   return (
-    <div className={`pc-toast pc-toast--${tone}${leaving ? " is-leaving" : ""}`} role="status">
+    <div
+      className={`pc-toast pc-toast--${tone}${leaving ? " is-leaving" : ""}${action ? " pc-on-dark" : ""}`}
+      role="status"
+      style={action ? { pointerEvents: "auto", padding: "4px 4px 4px 16px", maxWidth: "100%" } : undefined}
+    >
       <Icon name={icon ?? (tone === "danger" ? "alert-triangle" : "check")} size={18} />
-      <span>{message}</span>
+      <span style={action ? { flex: 1, minWidth: 0 } : undefined}>{message}</span>
+      {action && (
+        <Button
+          variant="ghost"
+          onClick={leaving ? undefined : action.onClick}
+          style={{ flex: "none", paddingLeft: 14, paddingRight: 14 }}
+        >
+          {action.label}
+        </Button>
+      )}
     </div>
   );
 }
