@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { readName, saveName } from "@/lib/name";
 import { forgetCrawl, recentByCode, rememberCrawl } from "@/lib/recent";
 import { ensureUser, errorText, getSupabase, supabaseConfigured } from "@/lib/supabase";
@@ -20,16 +20,24 @@ type State =
 // Finder ud af, om man allerede er med på turen, og viser ellers invitationen.
 export function CrawlGate({ code }: { code: string }) {
   const [state, setState] = useState<State>({ step: "loading" });
+  // Next viser siden igen fra <Activity>, og så kører effekten igen. Er turen allerede åben,
+  // skal et kort hul i nettet ikke skifte den ud med en fejl eller invitationen.
+  const ready = useRef(false);
+  useEffect(() => {
+    ready.current = state.step === "ready";
+  }, [state.step]);
 
   const load = useCallback(async () => {
     try {
       const user = await ensureUser();
       const supabase = getSupabase();
-      const { data: crawl } = await supabase
+      const { data: crawl, error: crawlError } = await supabase
         .from("crawls")
         .select("*")
         .eq("code", code)
         .maybeSingle<Crawl>();
+      // En fejl betyder ikke, at man ikke er med på turen.
+      if (crawlError) throw crawlError;
       if (crawl) {
         rememberCrawl({ code: crawl.code, name: crawl.name, id: crawl.id });
         setState({ step: "ready", crawl, userId: user.id });
@@ -70,6 +78,7 @@ export function CrawlGate({ code }: { code: string }) {
       setState({ step: "error", message: "Supabase er ikke sat op endnu." });
       return;
     }
+    if (ready.current) return;
     void load();
   }, [load]);
 
@@ -81,14 +90,10 @@ export function CrawlGate({ code }: { code: string }) {
     );
   }
 
+  if (state.step === "loading") return <CrawlLoading />;
+
   return (
     <Splash>
-      {state.step === "loading" && (
-        <div className="pc-fade-in flex flex-col items-center gap-3 text-gold-500">
-          <Spinner size={26} label="Henter turen" />
-          <p className="pc-eyebrow text-gold-300">Henter turen</p>
-        </div>
-      )}
       {state.step === "error" && (
         <Panel>
           <p className="mb-4 text-oxblood-500">{state.message}</p>
@@ -119,6 +124,18 @@ export function CrawlGate({ code }: { code: string }) {
           }}
         />
       )}
+    </Splash>
+  );
+}
+
+// Samme skærm i Suspense og mens turen hentes, så der kun er én "Henter turen".
+export function CrawlLoading() {
+  return (
+    <Splash>
+      <div className="pc-fade-in flex flex-col items-center gap-3 text-gold-500">
+        <Spinner size={26} label="Henter turen" />
+        <p className="pc-eyebrow text-gold-300">Henter turen</p>
+      </div>
     </Splash>
   );
 }
@@ -159,11 +176,17 @@ function JoinForm({
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    const clean = name.trim();
+    // Kun mellemrum kommer forbi required, men databasen vil have et navn.
+    if (!clean) {
+      setError("Skriv dit navn.");
+      return;
+    }
     setBusy(true);
     setError(null);
-    saveName(name);
+    saveName(clean);
     const { data, error } = await getSupabase()
-      .rpc("join_crawl", { p_code: code, p_member_name: name })
+      .rpc("join_crawl", { p_code: code, p_member_name: clean })
       .single<Crawl>();
     // En forkert kode giver en tom række i stedet for en fejl (databasen tæller forsøgene).
     if (error || !data?.id) {

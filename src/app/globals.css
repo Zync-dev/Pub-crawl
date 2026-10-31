@@ -83,17 +83,15 @@ a:focus-visible {
   }
 }
 
+/* "+1,2" over drinken: 10px løft ind, kort pause, og ud igen. */
 @keyframes pc-float {
-  0% {
+  from {
     opacity: 0;
     transform: translate(-50%, 0);
   }
-  20% {
+  to {
     opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -28px);
+    transform: translate(-50%, -10px);
   }
 }
 
@@ -125,7 +123,9 @@ a:focus-visible {
   left: 50%;
   top: 6px;
   pointer-events: none;
-  animation: pc-float 700ms var(--ease) forwards;
+  animation:
+    pc-float var(--dur-base) var(--ease) both,
+    pc-fade-out var(--dur-fast) var(--ease) 480ms forwards;
 }
 
 .pc-dialog__scrim.is-leaving {
@@ -198,6 +198,27 @@ a:focus-visible {
 }
 
 /* Tilpasninger af designsystemet til en rigtig telefon. */
+
+/* Små knapper ser ud som 34px, men trykfladen er 44px (--tap-min), som designsystemet kræver. */
+.pc-btn--sm {
+  position: relative;
+}
+
+.pc-btn--sm::after {
+  content: "";
+  position: absolute;
+  inset: calc((34px - var(--tap-min)) / 2) 0;
+}
+
+.pc-ibtn.pc-btn--sm::after {
+  inset: calc((34px - var(--tap-min)) / 2);
+}
+
+/* Et pubkort, der kan trykkes på, får fokusringen som knapperne. */
+.pc-stop[role="button"]:focus-visible {
+  outline: 0;
+  box-shadow: var(--ring-focus);
+}
 .pc-dialog__scrim {
   position: fixed;
   z-index: 2000;

@@ -1,11 +1,14 @@
 "use client";
 
 import {
+  useEffect,
   useId,
+  useRef,
   type ButtonHTMLAttributes,
   type CSSProperties,
   type HTMLAttributes,
   type InputHTMLAttributes,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
 import { Icon, type IconName } from "./icon";
@@ -144,15 +147,24 @@ export function Input({
 }) {
   const auto = useId();
   const inputId = id ?? auto;
+  const hintId = `${inputId}-hint`;
+  const shown = error || hint;
   return (
     <label className={`pc-field ${className}`} htmlFor={inputId}>
       {label && <span className="pc-field__label">{label}</span>}
       <span className={`pc-input${error ? " pc-input--error" : ""}`}>
         {icon && <Icon name={icon} size={18} />}
-        <input id={inputId} {...rest} />
+        <input
+          id={inputId}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={shown ? hintId : undefined}
+          {...rest}
+        />
       </span>
-      {(error || hint) && (
-        <span className={`pc-field__hint${error ? " is-error" : ""}`}>{error || hint}</span>
+      {shown && (
+        <span id={hintId} className={`pc-field__hint${error ? " is-error" : ""}`}>
+          {shown}
+        </span>
       )}
     </label>
   );
@@ -242,11 +254,24 @@ export function StopCard({
   footer?: ReactNode;
 }) {
   const done = status === "done";
+  // Kan kortet trykkes på, kan det også nås med tastatur og skærmlæser. Knapperne inden i er sig selv.
+  const action = onClick
+    ? {
+        role: "button",
+        tabIndex: 0,
+        onKeyDown: (e: ReactKeyboardEvent<HTMLDivElement>) => {
+          if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+          e.preventDefault();
+          onClick();
+        },
+      }
+    : {};
   return (
     <div
       className={`pc-stop pc-stop--${status}${footer ? " flex-wrap" : ""}`}
       onClick={onClick}
       style={onClick ? undefined : { cursor: "default" }}
+      {...action}
     >
       <div className="pc-stop__num">{done ? <Icon name="check" size={18} /> : number}</div>
       <div className="pc-stop__main">
@@ -336,12 +361,65 @@ export function Dialog({
   onClose?: () => void;
   leaving?: boolean;
 }) {
+  const titleId = useId();
+  const box = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
+
+  // Fokus flytter ind i dialogen, bliver der, Escape lukker, og fokus kommer tilbage bagefter.
+  useEffect(() => {
+    if (!open) return;
+    const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusables = () =>
+      Array.from(
+        box.current?.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), [href], [tabindex]:not([tabindex='-1'])") ?? [],
+      );
+    if (!box.current?.contains(document.activeElement)) focusables()[0]?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close.current?.();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const list = focusables();
+      if (!list.length) return;
+      const first = list[0];
+      const last = list[list.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      if (before?.isConnected) before.focus();
+    };
+  }, [open]);
+
   if (!open) return null;
   return (
     <div className={`pc-dialog__scrim${leaving ? " is-leaving" : ""}`} onClick={leaving ? undefined : onClose}>
-      <div className="pc-dialog" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={box}
+        className="pc-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={title ? titleId : undefined}
+        onClick={(e) => e.stopPropagation()}
+      >
         {eyebrow && <div className="pc-dialog__eyebrow">{eyebrow}</div>}
-        {title && <h2 className="pc-dialog__title">{title}</h2>}
+        {title && (
+          <h2 id={titleId} className="pc-dialog__title">
+            {title}
+          </h2>
+        )}
         {children && <div className="pc-dialog__body">{children}</div>}
         {actions && <div className="pc-dialog__actions">{actions}</div>}
       </div>
@@ -361,12 +439,12 @@ export function Toast({
   icon?: IconName;
   leaving?: boolean;
   // offline-undo: en knap i toasten, fx "Fortryd". Ghost-knap i guld som andre knapper på mørk bund.
+  // Skærmlæsere får teksten fra en live region, der altid er der (se AskProvider).
   action?: { label: string; onClick: () => void };
 }) {
   return (
     <div
       className={`pc-toast pc-toast--${tone}${leaving ? " is-leaving" : ""}${action ? " pc-on-dark" : ""}`}
-      role="status"
       style={action ? { pointerEvents: "auto", padding: "4px 4px 4px 16px", maxWidth: "100%" } : undefined}
     >
       <Icon name={icon ?? (tone === "danger" ? "alert-triangle" : "check")} size={18} />
@@ -465,12 +543,15 @@ export function Logo({
 // Den grønne topbjælke med guld-eyebrow, kursiv titel og den tykke dobbelte guldstreg.
 export function Header({
   eyebrow,
+  eyebrowKey,
   title,
   left,
   right,
   children,
 }: {
   eyebrow?: ReactNode;
+  // Eyebrowen toner ind, når nøglen skifter. Uden nøgle er det teksten selv.
+  eyebrowKey?: string;
   title: ReactNode;
   left?: ReactNode;
   right?: ReactNode;
@@ -491,7 +572,7 @@ export function Header({
         <div style={{ flex: 1, minWidth: 0 }}>
           {eyebrow && (
             <div
-              key={typeof eyebrow === "string" ? eyebrow : undefined}
+              key={eyebrowKey ?? (typeof eyebrow === "string" ? eyebrow : undefined)}
               className="pc-eyebrow pc-fade-in"
               style={{ color: "var(--gold-500)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
             >

@@ -1,12 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { distanceMeters } from "./geo";
+import { shouldSendPosition } from "./position-throttle";
 import { getSupabase } from "./supabase";
 import type { LatLng } from "./types";
-
-const MIN_INTERVAL_MS = 20_000;
-const MIN_MOVE_M = 25;
 
 function storageKey(crawlId: string) {
   return `pubcrawl.share.${crawlId}`;
@@ -42,13 +39,7 @@ export function useLocationSharing(crawlId: string, userId: string) {
         setError(null);
         const last = lastSent.current;
         const now = Date.now();
-        if (
-          last &&
-          now - last.at < MIN_INTERVAL_MS &&
-          distanceMeters(last.pos, here) < MIN_MOVE_M
-        ) {
-          return;
-        }
+        if (!shouldSendPosition(last, here, pos.coords.accuracy, now)) return;
         lastSent.current = { at: now, pos: here };
         void supabase
           .from("members")

@@ -3,7 +3,10 @@ import { crawl, stop } from "./test-fixtures";
 import {
   byPosition,
   crawlRow,
+  ARRIVAL,
+  CHALLENGE,
   fieldsOf,
+  guardFilters,
   NOBODY,
   once,
   undoFailedText,
@@ -125,5 +128,26 @@ describe("once", () => {
     undo();
     undo();
     expect(fn).toHaveBeenCalledOnce();
+  });
+});
+
+describe("guardFilters", () => {
+  it("tjekker pubben og ankomsten, og null bliver til .is", () => {
+    expect(guardFilters(at({ current_stop_id: "s1", arrived_at: "t" }), ARRIVAL)).toEqual([
+      ["current_stop_id", "s1"],
+      ["arrived_at", "t"],
+    ]);
+    expect(guardFilters(NOBODY, ARRIVAL)).toEqual([
+      ["current_stop_id", null],
+      ["arrived_at", null],
+    ]);
+  });
+
+  it("tjekker også udfordringen, når en ny trækkes", () => {
+    expect(guardFilters(at({ challenge: "Skål" }), CHALLENGE).map(([k]) => k)).toEqual([
+      "current_stop_id",
+      "arrived_at",
+      "challenge",
+    ]);
   });
 });

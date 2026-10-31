@@ -7,6 +7,7 @@ import type { CrawlData } from "./use-crawl";
 import { newId } from "./uuid";
 import {
   addSettled,
+  dropSettled,
   entryKey,
   markSent,
   markWaiting as withWaiting,
@@ -15,6 +16,7 @@ import {
   parseOutbox,
   pruneSettled,
   queueRemoval,
+  queueRestore,
   retryable,
   type OutboxEntry,
   type Settled,
@@ -170,7 +172,8 @@ export function useDrinkOutbox(
         } else if (entry.op === "insert" && drink) {
           settle(drink.id, drink);
           patch((p) => (p.drinks.some((d) => d.id === drink.id) ? p : { ...p, drinks: [...p.drinks, drink] }));
-        } else if (entry.op === "delete") {
+        } else if (entry.op === "delete" && !queue.current.some((e) => entryKey(e) === `insert:${entry.id}`)) {
+          // Er den fortrudt imens, ligger den i køen igen og skal ikke skjules.
           settle(entry.id, null);
           patch((p) => ({ ...p, drinks: p.drinks.filter((d) => d.id !== entry.id) }));
         }
@@ -197,6 +200,18 @@ export function useDrinkOutbox(
       if (!change) return;
       commit(change.next);
       if (change.flush) void flush();
+    },
+    [commit, flush],
+  );
+
+  // Fortryd en slettet drink. Den kommer tilbage med samme id, tid og pub.
+  const restore = useCallback(
+    (drink: Drink) => {
+      const next = queueRestore(queue.current, drink, inFlight.current);
+      if (!next) return;
+      setSettled((list) => dropSettled(list, drink.id));
+      commit(next);
+      void flush();
     },
     [commit, flush],
   );
@@ -240,5 +255,5 @@ export function useDrinkOutbox(
   const waitingIds = useMemo(() => waitingDrinkIds(entries), [entries]);
   const waiting = waitingCount(entries);
 
-  return { drinks: merged, waitingIds, waiting, add, remove, flush };
+  return { drinks: merged, waitingIds, waiting, add, remove, restore, flush };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DRINK_BY_KIND, DRINK_KINDS, formatUnits } from "./drinks";
+import { DRINK_BY_KIND, DRINK_KINDS, formatGenstande, formatUnits } from "./drinks";
 
 describe("DRINK_KINDS", () => {
   it("har hver slags én gang og holder sig inden for databasens grænser", () => {
@@ -23,5 +23,19 @@ describe("formatUnits", () => {
     expect(formatUnits(3)).toBe("3");
     expect(formatUnits(2.5)).toBe("2,5");
     expect(formatUnits(1.25)).toBe("1,3");
+  });
+});
+
+describe("formatGenstande", () => {
+  it("bøjer genstand", () => {
+    expect(formatGenstande(1)).toBe("1 genstand");
+    expect(formatGenstande(1.5)).toBe("1,5 genstande");
+    expect(formatGenstande(0)).toBe("0 genstande");
+  });
+});
+
+describe("Shot", () => {
+  it("er 4 cl og én genstand (12 g alkohol)", () => {
+    expect(DRINK_BY_KIND.shot).toMatchObject({ detail: "4 cl", units: 1 });
   });
 });

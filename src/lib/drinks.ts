@@ -14,8 +14,9 @@ export const DRINK_KINDS: {
   { kind: "draft", label: "Fadøl", detail: "50 cl", icon: "beer", units: 1.5 },
   { kind: "cider", label: "Cider", detail: "33 cl", icon: "apple", units: 1 },
   { kind: "wine", label: "Vin", detail: "glas", icon: "wine", units: 1 },
-  { kind: "drink", label: "Drink", detail: "cocktail", icon: "martini", units: 1.5 },
-  { kind: "shot", label: "Shot", detail: "2 cl", icon: "glass-water", units: 1 },
+  { kind: "drink", label: "Cocktail", detail: "blandet", icon: "martini", units: 1.5 },
+  // 4 cl spiritus på 40 % er ca. 12 g alkohol, altså én genstand.
+  { kind: "shot", label: "Shot", detail: "4 cl", icon: "glass-water", units: 1 },
   { kind: "water", label: "Vand", detail: "tæller ikke", icon: "droplet", units: 0 },
 ];
 
@@ -25,4 +26,9 @@ export const DRINK_BY_KIND = Object.fromEntries(
 
 export function formatUnits(units: number) {
   return units.toLocaleString("da-DK", { maximumFractionDigits: 1 });
+}
+
+// "1 genstand", "1,5 genstande".
+export function formatGenstande(units: number) {
+  return `${formatUnits(units)} ${formatUnits(units) === "1" ? "genstand" : "genstande"}`;
 }

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { arrangerErrorText, canEditRoute, isArranger, isRouteLocked, pickFields, type ArrangerCrawl } from "./arranger";
 import { forgetCrawl, rememberCrawl } from "./recent";
+import { liveTopic } from "./realtime";
 import { getSupabase } from "./supabase";
 import type { Member } from "./types";
 import type { useCrawl } from "./use-crawl";
@@ -54,7 +55,7 @@ export function useArranger(state: CrawlState, userId: string) {
   useEffect(() => {
     const supabase = getSupabase();
     const channel = supabase
-      .channel(`arranger:${crawlId}`)
+      .channel(liveTopic("arranger", crawlId))
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "members" }, (payload) => {
         const old = payload.old as Partial<Member>;
         if (!old.crawl_id || old.crawl_id === crawlId) void refetch();

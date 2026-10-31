@@ -32,8 +32,8 @@ describe("matchesTemplate", () => {
   });
 
   it("sammenligner fællesudfordringer direkte", () => {
-    expect(matchesTemplate("Fri runde! Nyd det.", "Fri runde! Nyd det.")).toBe(true);
-    expect(matchesTemplate("Fri runde! Nyd det.", "Fri runde!")).toBe(false);
+    expect(matchesTemplate("Ingen udfordring her. Nyd øllen.", "Ingen udfordring her. Nyd øllen.")).toBe(true);
+    expect(matchesTemplate("Ingen udfordring her. Nyd øllen.", "Ingen udfordring her.")).toBe(false);
   });
 
   it("forveksler ingen af udfordringerne med hinanden", () => {

@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { fetchPublicCrawl, formatCopenhagenTime, liveStatus, type PublicCrawl } from "@/lib/live-link";
+import { formatPubs } from "@/lib/route";
 import type { Stop } from "@/lib/types";
 import { DirectionsButton } from "./directions-button";
 import { Badge, Card, Header, Icon, SectionTitle, Spinner, StopCard } from "./ds";
@@ -191,7 +192,7 @@ export function PublicLive({ token, initial }: { token: string; initial: PublicC
 
       {total > 0 && (
         <section className="pc-enter flex flex-col gap-2.5">
-          <SectionTitle eyebrow={`${total} pubs`} title="Ruten" />
+          <SectionTitle eyebrow={formatPubs(total)} title="Ruten" />
           <div
             className="relative h-[40dvh] min-h-64 overflow-hidden rounded-[var(--radius-md)]"
             style={{ border: "var(--rule-double)" }}

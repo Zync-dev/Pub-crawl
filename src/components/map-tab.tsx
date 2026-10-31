@@ -64,7 +64,7 @@ export function MapTab({
 
   // arranger: låses ruten, slutter "Sæt en pub". Ellers dukker den op igen, når låsen tages af.
   if (routeLocked && adding) setAdding(false);
-  // De røde prikker fra "Pubs her" hører til planlægningen og ryddes, når man forlader fanen.
+  // De røde prikker fra "Pubber her" hører til planlægningen og ryddes, når man forlader fanen.
   if (wasVisible !== visible) {
     setWasVisible(visible);
     if (!visible) {
@@ -136,9 +136,9 @@ export function MapTab({
         .sort((x, y) => distanceMeters(center, x) - distanceMeters(center, y));
       setNearby(fresh);
       setResults(null);
-      setMessage(fresh.length ? null : "Ingen pubs her. Flyt kortet og prøv igen.");
+      setMessage(fresh.length ? null : "Ingen pubber her. Flyt kortet og prøv igen.");
     } catch {
-      setMessage("Kunne ikke hente pubs lige nu. Prøv igen om lidt.");
+      setMessage("Kunne ikke hente pubber lige nu. Prøv igen om lidt.");
     } finally {
       setBusy(null);
     }
@@ -200,7 +200,7 @@ export function MapTab({
               disabled={busy !== null || routeLocked}
               onClick={() => void findNearby()}
             >
-              Pubs her
+              Pubber her
             </Button>
           </div>
           {myPosition && (
@@ -252,10 +252,10 @@ export function MapTab({
           />
         )}
 
-        {/* "Pubs her" også som liste, så man ikke skal ramme de små prikker på kortet. */}
+        {/* "Pubber her" også som liste, så man ikke skal ramme de små prikker på kortet. */}
         {nearby.length > 0 && !results?.length && (
           <section className="pc-enter">
-            <SectionTitle eyebrow="Fundet på kortet" title={`${nearby.length} pubs og barer`} />
+            <SectionTitle eyebrow="Fundet på kortet" title={nearby.length === 1 ? "1 pub eller bar" : `${nearby.length} pubber og barer`} />
             <PlaceList
               places={nearby}
               saving={saving}
@@ -371,7 +371,7 @@ function RouteList({
             "Arrangøren lægger ruten."
           ) : (
             <>
-              Find pubs med <strong>Pubs her</strong>, eller sæt en selv.
+              Find pubber med <strong>Pubber her</strong>, eller sæt en selv.
             </>
           )}
         </p>

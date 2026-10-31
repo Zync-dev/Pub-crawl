@@ -79,8 +79,22 @@ export function queueRemoval(
   return { next: [...queue, { op: "delete", id: drinkId }], flush: true };
 }
 
+// Fortryd en slettet drink: den samme drink (samme id, tid og pub) lægges i køen igen.
+// En sletning, der ikke er sendt, droppes. Den nye indsættelse er ufarlig, hvis drinken stadig findes.
+export function queueRestore(queue: OutboxEntry[], drink: Drink, inFlight: string | null): OutboxEntry[] | null {
+  const insertKey = `insert:${drink.id}`;
+  const deleteKey = `delete:${drink.id}`;
+  if (queue.some((e) => entryKey(e) === insertKey)) return null;
+  const rest = inFlight === deleteKey ? queue : queue.filter((e) => entryKey(e) !== deleteKey);
+  return [...rest, { op: "insert", drink }];
+}
+
 export function addSettled(list: Settled[], id: string, drink: Drink | null, until: number): Settled[] {
   return [...list.filter((s) => s.id !== id), { id, drink, until }];
+}
+
+export function dropSettled(list: Settled[], id: string): Settled[] {
+  return list.some((s) => s.id === id) ? list.filter((s) => s.id !== id) : list;
 }
 
 export function pruneSettled(list: Settled[], now: number): Settled[] {
