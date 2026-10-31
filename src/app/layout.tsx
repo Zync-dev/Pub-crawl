@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { DM_Serif_Display, Libre_Franklin } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
+import { ErrorReporter } from "@/components/error-reporter";
 import "./globals.css";
 
 const dmSerif = DM_Serif_Display({
@@ -30,7 +32,12 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="da" className={`${dmSerif.variable} ${franklin.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col">{children}</body>
+      <body className="flex min-h-full flex-col">
+        {children}
+        {/* quality: besøgstal (Vercel Analytics) og fejlrapporter fra telefonerne */}
+        <Analytics />
+        <ErrorReporter />
+      </body>
     </html>
   );
 }

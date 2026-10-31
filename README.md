@@ -32,3 +32,13 @@ Bemærk: en webapp kan kun dele positionen, mens den er åben. På iPhone stoppe
    ```
 
 4. `pnpm install` og `pnpm dev`.
+
+## Test
+
+- `pnpm test` kører enhedstestene i `src/lib` med Vitest (statistik, afstande, timer, udfordringer, drinks, pub-søgning med en falsk `fetch`, navn og seneste ture med et falsk `localStorage`, fejlrapporteren). Ingen netværk.
+- `pnpm test:db` tester rettighederne mod Supabase-projektet i `.env.local`. Den logger tre anonyme brugere ind, opretter en tur ved navn "Test db" og tjekker, at deltagere kan læse, men ikke slette eller skrive drinks på andre, at en udenforstående intet ser, og at `join_crawl` og `crawl_preview` opfører sig. Bagefter forlader den turen. Kræver netværk og anonyme logins, og hver kørsel bruger tre af Supabases anonyme logins.
+
+## Fejl og besøgstal
+
+- Fejl på telefonerne (fejlsiderne og uopfangede fejl) sendes til tabellen `client_errors` i produktion. Den kan kun læses i Supabase. Højst 30 rapporter pr. bruger i timen.
+- Besøgstal kommer fra Vercel Analytics. Slå det til under projektets **Analytics** i Vercel.
