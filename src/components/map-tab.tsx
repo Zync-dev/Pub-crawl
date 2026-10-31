@@ -12,6 +12,7 @@ import type { CrawlActions } from "./crawl-app";
 // nav-live: Vis vej
 import { DirectionsButton } from "./directions-button";
 import { Button, Card, IconButton, Input, SectionTitle, Spinner, StopCard } from "./ds";
+import { StopReviewNote } from "./reviews/stop-review-note"; // pub-reviews
 
 const MapView = dynamic(() => import("./map-view"), {
   ssr: false,
@@ -316,7 +317,7 @@ function RouteList({
                 total={stops.length}
                 name={stop.name}
                 time={stop.visited_at && !current ? formatTime(stop.visited_at) : undefined}
-                note={note}
+                note={<StopReviewNote stop={stop} text={note} status={status} editing={editing} /> /* pub-reviews */}
                 status={status}
                 onClick={() => onFocus(stop)}
               >

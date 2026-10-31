@@ -14,6 +14,7 @@ import { Button, Card, Icon, SectionTitle } from "./ds";
 import { ChallengeVoting } from "./games/challenge-voting"; // games: stemmer om udfordringen
 import { RollCallCard, RollCallStarter, useRollCallContext } from "./roll-call"; // Er alle med? (rollcall)
 import { NextRoundCard } from "./rounds"; // Omgange
+import { AtPubReviews } from "./reviews/at-pub-reviews"; // pub-reviews
 
 export function NowTab({
   crawl,
@@ -51,6 +52,8 @@ export function NowTab({
       <RollCallStarter userId={userId} fromStopId={currentStop?.id ?? null} />
       {/* Omgange: hvis tur er det til at give? */}
       <NextRoundCard />
+      {/* pub-reviews: stjerner og billeder fra pubben, I er på */}
+      {currentStop && <AtPubReviews stop={currentStop} />}
       <Drinks drinks={drinks} stops={stops} userId={userId} currentStop={currentStop} now={now} actions={actions} />
     </div>
   );
