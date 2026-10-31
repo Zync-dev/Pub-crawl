@@ -1,12 +1,13 @@
 "use client";
 
-import { Beer } from "lucide-react";
+import { Beer, Users } from "lucide-react";
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { memberTone } from "@/lib/colors";
 import {
   formatRoundCount,
   formatRoundsGiven,
   genitive,
+  lastInBuyer,
   latestRounds,
   rankBuyers,
   removeRound,
@@ -15,12 +16,14 @@ import {
   upsertRound,
   type Round,
 } from "@/lib/rounds";
+import { notifyCrew } from "@/lib/push";
 import { getSupabase } from "@/lib/supabase";
 import { formatTime } from "@/lib/timer";
 import type { Member, Stop } from "@/lib/types";
 import { useRounds } from "@/lib/use-rounds";
 import { useAsk } from "./ask";
-import { Avatar, Button, Card, SectionTitle } from "./ds";
+import { Avatar, Button, Card, Icon, SectionTitle } from "./ds";
+import { useRollCallContext } from "./roll-call"; // wiring: "Sidst med" fra opråbet
 
 // Hvis tur er det til at give? Data og handlinger deles af Nu, Stillingen og Holdet.
 
@@ -44,6 +47,7 @@ function useRoundsContext() {
 
 export function RoundsProvider({
   crawlId,
+  crawlCode,
   userId,
   members,
   stops,
@@ -51,6 +55,8 @@ export function RoundsProvider({
   children,
 }: {
   crawlId: string;
+  // wiring: til linket i push-beskeden.
+  crawlCode?: string;
   userId: string;
   members: Member[];
   stops: Stop[];
@@ -78,7 +84,22 @@ export function RoundsProvider({
       return false;
     }
     setRounds((prev) => upsertRound(removeRound(prev, temp.id), data));
-    ask.toast(buyer.user_id === userId ? "Omgangen er på dig" : `Omgangen er på ${buyer.name}`);
+    // wiring: Fortryd i toasten (som Tjek ind og Videre) og en besked til resten af holdet.
+    let undone = false;
+    ask.toast(buyer.user_id === userId ? "Omgangen er på dig" : `Omgangen er på ${buyer.name}`, {
+      action: {
+        label: "Fortryd",
+        onClick: () => {
+          if (undone) return;
+          undone = true;
+          void undo(data);
+        },
+      },
+    });
+    void notifyCrew(crawlId, "round", data.id, {
+      title: `Omgangen er på ${buyer.name}`,
+      url: crawlCode ? `/t/${crawlCode}` : undefined,
+    });
     return true;
   }
 
@@ -99,6 +120,7 @@ export function RoundsProvider({
 // Kortet under Nu: forslag til næste giver, et valg mellem alle på holdet og de seneste omgange.
 export function NextRoundCard() {
   const { rounds, members, stops, userId, give, undo } = useRoundsContext();
+  const rollCall = useRollCallContext();
   const [picked, setPicked] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const ranked = useMemo(() => rankBuyers(members, rounds), [members, rounds]);
@@ -106,6 +128,10 @@ export function NextRoundCard() {
   const suggested = ranked[0]?.member ?? null;
   const buyer = members.find((m) => m.user_id === picked) ?? suggested;
   if (!buyer || !suggested) return null;
+  // wiring: "Sidst med: Jonas. Skal Jonas give?" ved siden af forslaget, når opråbet er lukket.
+  const lastIn = rollCall.open ? null : lastInBuyer(rollCall.lastIn, members, rounds, buyer.user_id);
+  const lastInName = lastIn?.user_id === userId ? "dig" : lastIn?.name;
+  const lastInWho = lastIn?.user_id === userId ? "du" : lastIn?.name;
 
   const byId = new Map(members.map((m) => [m.user_id, m]));
   const latest = latestRounds(
@@ -147,6 +173,20 @@ export function NextRoundCard() {
             <p className="text-[13px] text-muted">{note}</p>
           </div>
         </div>
+
+        {lastIn && (
+          <button
+            type="button"
+            onClick={() => setPicked(lastIn.user_id === suggested.user_id ? null : lastIn.user_id)}
+            className="pc-fade-in -my-2 flex min-h-11 items-center gap-2 text-left text-[13px] text-muted active:translate-y-px"
+            style={{ background: "none", border: 0, padding: 0 }}
+          >
+            <Icon name={Users} size={16} color="var(--oxblood-700)" />
+            <span>
+              Sidst med: {lastInName}. Skal {lastInWho} give?
+            </span>
+          </button>
+        )}
 
         {members.length > 1 && (
           <div>

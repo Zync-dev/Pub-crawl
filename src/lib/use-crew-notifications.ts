@@ -46,3 +46,25 @@ export function notifyMove(crawl: Crawl, from: Stop, to: Stop | null) {
     url: `/t/${crawl.code}`,
   });
 }
+
+// wiring: "Er alle med?" til holdet, når et opråb starter. Kun telefonen, der startede det, sender,
+// for afsenderen får ikke selv beskeden. Databasen sender hvert opråb én gang (nøglen er opråbets id).
+export function useRollCallNotification(
+  crawl: Crawl,
+  call: { id: string } | null,
+  open: boolean,
+  startedByMe: boolean,
+) {
+  const sent = useRef<string | null>(null);
+  const id = open && startedByMe ? (call?.id ?? null) : null;
+
+  useEffect(() => {
+    if (!id || sent.current === id) return;
+    sent.current = id;
+    void notifyCrew(crawl.id, "rollcall", id, {
+      title: "Er alle med?",
+      body: "Tryk Jeg er med, når du er med.",
+      url: `/t/${crawl.code}`,
+    });
+  }, [id, crawl.id, crawl.code]);
+}

@@ -164,7 +164,8 @@ export function useUndoableActions({
       });
     },
 
-    async leave() {
+    // wiring: onUndone kaldes, når Videre er fortrudt, så opråbet, Videre startede, også kan lukkes.
+    async leave(onUndone?: () => void) {
       const before = fieldsOf(crawl);
       const stop = stops.find((s) => s.id === crawl.current_stop_id);
       const forward = withCrawl(NOBODY);
@@ -185,6 +186,7 @@ export function useUndoableActions({
           .select("id");
         if (error || !data?.length) return failed(back, forward, error);
         back.release();
+        onUndone?.();
         ask.toast(stop ? `Tilbage på ${stop.name}` : "Videre er fortrudt");
       });
       return true;

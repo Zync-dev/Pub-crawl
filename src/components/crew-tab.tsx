@@ -235,15 +235,27 @@ function Settings({
           fullWidth
           style={{ color: "var(--oxblood-700)" }}
           onClick={async () => {
+            // wiring: arrangøren giver rollen videre til den, der kom først med, så turen ikke står uden.
+            const heir = arranger.isArranger
+              ? members
+                  .filter((m) => m.user_id !== userId)
+                  .sort((a, b) => a.joined_at.localeCompare(b.joined_at))[0]
+              : undefined;
             const ok = await ask.confirm({
               eyebrow: "Forlad turen",
               title: "Går du hjem?",
-              body: "Dine drinks bliver slettet fra stillingen.",
+              body: heir
+                ? `Dine drinks bliver slettet fra stillingen. ${heir.name} bliver arrangør.`
+                : "Dine drinks bliver slettet fra stillingen.",
               confirm: "Forlad turen",
               cancel: "Bliv på holdet",
               danger: true,
             });
             if (!ok) return;
+            if (heir) {
+              const error = await arranger.transferRole(heir);
+              if (error) return ask.toast(error, "danger");
+            }
             if (await actions.leaveCrawl()) {
               forgetCrawl(crawl.code);
               router.push("/");

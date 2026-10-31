@@ -80,3 +80,19 @@ export function formatRoundsGiven(n: number) {
 export function genitive(name: string) {
   return /[sxz]$/i.test(name) ? `${name}'` : `${name}s`;
 }
+
+// wiring: den, der kom sidst med på det seneste opråb, som et stille forslag ved siden af det
+// faste. Kun når der ikke er givet en omgang siden, den er på holdet, og den ikke allerede er valgt.
+export function lastInBuyer(
+  lastIn: { member: Member; at: string } | null,
+  members: Member[],
+  rounds: Round[],
+  shownBuyerId: string | null,
+): Member | null {
+  if (!lastIn) return null;
+  const member = members.find((m) => m.user_id === lastIn.member.user_id);
+  if (!member || member.user_id === shownBuyerId) return null;
+  const at = Date.parse(lastIn.at);
+  if (rounds.some((r) => Date.parse(r.created_at) > at)) return null;
+  return member;
+}

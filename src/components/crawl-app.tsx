@@ -12,7 +12,7 @@ import { formatClock, formatTime, remainingMs } from "@/lib/timer";
 import type { Crawl, Drink, DrinkKind, LatLng, Member, Stop } from "@/lib/types";
 import { useArranger } from "@/lib/use-arranger"; // arranger
 import { useCrawl, useNow } from "@/lib/use-crawl";
-import { useCrewNotifications } from "@/lib/use-crew-notifications";
+import { useCrewNotifications, useRollCallNotification } from "@/lib/use-crew-notifications";
 import { useDrinkOutbox, type DrinkOutbox } from "@/lib/use-drink-outbox";
 import { useHolds } from "@/lib/use-holds";
 import { useLocationSharing } from "@/lib/use-location";
@@ -73,7 +73,7 @@ function useActions(
     // offline-undo: med Fortryd i toasten. Se use-undoable-actions.ts.
     // games: udfordringsrækken og current_challenge_id skrives også dér.
     arrive: (stop: Stop) => undoable.arrive(stop),
-    leave: () => undoable.leave(),
+    leave: (onUndone?: () => void) => undoable.leave(onUndone),
     async newChallenge() {
       // games: en ny række for hver udfordring. Den gamle beholder sine stemmer.
       const drawn = drawChallenge(members, crawl.challenge);
@@ -197,7 +197,8 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
   const now = useNow(1000);
   const location = useLocationSharing(crawl.id, userId);
   // arranger: arrangørens værktøjer, ny kode og fjernet fra holdet.
-  const arranger = useArranger(data, userId);
+  // wiring: med den fastholdte tur, så låsen og rollen følger Fortryd som resten af appen.
+  const arranger = useArranger({ ...data, crawl, stops }, userId);
   const [tab, setTab] = useState<Tab>("now");
   const [mapMounted, setMapMounted] = useState(false);
   const scroller = useRef<HTMLElement>(null);
@@ -226,6 +227,8 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
   const rollCall = useRollCallWithToasts(crawl.id, userId, members, now);
   // pwa-push: "Sidste omgang" til holdet, når timeren løber ud.
   useCrewNotifications(crawl, currentStop, remaining);
+  // wiring: "Er alle med?" til holdet, når du starter et opråb.
+  useRollCallNotification(crawl, rollCall.call, rollCall.open, rollCall.startedByMe);
 
   const back = (
     <Link href="/" className="pc-btn pc-btn--ghost pc-btn--sm" style={{ paddingLeft: 6 }}>
@@ -329,6 +332,7 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
                 <NowTab
                   crawl={crawl}
                   stops={stops}
+                  members={members}
                   drinks={drinks}
                   currentStop={currentStop}
                   nextStop={nextStop}
@@ -399,7 +403,7 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
   return (
     <GamesProvider crawlId={crawl.id} userId={userId} members={members}>
       {/* Omgange: deler omgangene med Nu, Stillingen og Holdet. */}
-      <RoundsProvider crawlId={crawl.id} userId={userId} members={members} stops={stops} currentStopId={crawl.current_stop_id}>
+      <RoundsProvider crawlId={crawl.id} crawlCode={crawl.code} userId={userId} members={members} stops={stops} currentStopId={crawl.current_stop_id}>
         {/* Er alle med? (rollcall) */}
         <RollCallProvider value={rollCall}>{page}</RollCallProvider>
       </RoundsProvider>
