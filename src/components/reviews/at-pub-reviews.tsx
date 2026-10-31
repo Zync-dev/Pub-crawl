@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import type { Stop } from "@/lib/types";
+import type { Member, Stop } from "@/lib/types";
 import { formatSummary, useReviews } from "@/lib/use-reviews";
 import { useAsk } from "../ask";
 import { Card, SectionTitle } from "../ds";
@@ -10,7 +10,7 @@ import { PhotoViewer } from "./photo-viewer";
 import { StarRating } from "./star-rating";
 
 // Under Nu, mens I er på en pub: stjerner til stedet og billeder herfra.
-export function AtPubReviews({ stop }: { stop: Stop }) {
+export function AtPubReviews({ stop, members }: { stop: Stop; members?: Member[] }) {
   const ask = useAsk();
   const reviews = useReviews(stop.crawl_id);
   const [viewing, setViewing] = useState<number | null>(null);
@@ -52,6 +52,7 @@ export function AtPubReviews({ stop }: { stop: Stop }) {
           photos={photos}
           startIndex={viewing}
           stopName={() => stop.name}
+          members={members}
           onClose={close}
         />
       )}

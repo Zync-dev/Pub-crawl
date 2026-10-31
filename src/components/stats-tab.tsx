@@ -33,9 +33,11 @@ export function StatsTab({
     return (
       <div className="flex flex-col gap-6 px-4 py-[18px]">
         <Card variant="framed" className="text-center">
-          <p className="pc-label mb-2 text-oxblood-700">Ingen omgange endnu</p>
+          <p className="pc-label mb-2 text-oxblood-700">Ingen drinks endnu</p>
           <p className="text-muted">Når I skriver drinks ind under Nu, kommer stillingen her.</p>
         </Card>
+        {/* wiring: stjernerne tæller, også før nogen har skrevet en drink ind */}
+        {stops.length > 0 && <BestPub crawlId={stops[0].crawl_id} stops={stops} />}
         {/* games: udfordringspoint */}
         <ChallengeRanking />
         {/* Omgange */}

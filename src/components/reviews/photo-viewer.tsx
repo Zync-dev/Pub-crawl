@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePhotoUrls } from "@/lib/photo-urls";
 import type { Photo } from "@/lib/reviews-types";
+import type { Member } from "@/lib/types";
 import { formatTime } from "@/lib/timer";
 import { useReviews } from "@/lib/use-reviews";
 import { useAsk } from "../ask";
@@ -16,12 +17,15 @@ export function PhotoViewer({
   photos,
   startIndex,
   stopName,
+  members,
   onClose,
 }: {
   crawlId: string;
   photos: Photo[];
   startIndex: number;
   stopName?: (stopId: string | null) => string | undefined;
+  // Holdet, så viseren kan sige, hvem der tog billedet.
+  members?: Member[];
   onClose: () => void;
 }) {
   const ask = useAsk();
@@ -82,6 +86,7 @@ export function PhotoViewer({
   }
 
   const place = stopName?.(photo.stop_id);
+  const photographer = members?.find((m) => m.user_id === photo.user_id)?.name;
 
   return createPortal(
     <div
@@ -102,7 +107,7 @@ export function PhotoViewer({
             {place ? ` · ${place}` : ""}
           </p>
           <p className="mt-1.5 text-[13px]" style={{ color: "rgba(251,245,230,.75)" }}>
-            {mine ? "Dit billede" : "Fra holdet"} · {formatTime(photo.created_at)}
+            {mine ? "Dit billede" : (photographer ?? "Fra holdet")} · {formatTime(photo.created_at)}
           </p>
         </div>
         <IconButton data-close icon={X} label="Luk" onClick={onClose} />

@@ -2,7 +2,7 @@
 
 import { Images } from "lucide-react";
 import { useCallback, useState } from "react";
-import type { Stop } from "@/lib/types";
+import type { Member, Stop } from "@/lib/types";
 import { formatSummary, useReviews } from "@/lib/use-reviews";
 import { useAsk } from "../ask";
 import { Icon } from "../ds";
@@ -16,11 +16,13 @@ export function StopReviewNote({
   text,
   status,
   editing,
+  members,
 }: {
   stop: Stop;
   text: string;
   status: "upcoming" | "current" | "done";
   editing?: boolean;
+  members?: Member[];
 }) {
   const ask = useAsk();
   const reviews = useReviews(stop.crawl_id);
@@ -68,6 +70,7 @@ export function StopReviewNote({
           photos={photos}
           startIndex={viewing}
           stopName={() => stop.name}
+          members={members}
           onClose={close}
         />
       )}

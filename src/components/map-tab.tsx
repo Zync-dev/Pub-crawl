@@ -239,6 +239,7 @@ export function MapTab({
           actions={actions}
           onFocus={focusOn}
           locked={routeLocked}
+          members={members}
         />
       </div>
     </div>
@@ -252,6 +253,7 @@ function RouteList({
   actions,
   onFocus,
   locked = false,
+  members,
 }: {
   stops: Stop[];
   currentStopId: string | null;
@@ -259,6 +261,8 @@ function RouteList({
   actions: CrawlActions;
   onFocus: (at: LatLng) => void;
   locked?: boolean;
+  // wiring: viseren viser, hvem der tog billedet.
+  members: Member[];
 }) {
   const ask = useAsk();
   const [editingState, setEditing] = useState(false);
@@ -317,7 +321,7 @@ function RouteList({
                 total={stops.length}
                 name={stop.name}
                 time={stop.visited_at && !current ? formatTime(stop.visited_at) : undefined}
-                note={<StopReviewNote stop={stop} text={note} status={status} editing={editing} /> /* pub-reviews */}
+                note={<StopReviewNote stop={stop} text={note} status={status} editing={editing} members={members} /> /* pub-reviews */}
                 status={status}
                 onClick={() => onFocus(stop)}
               >

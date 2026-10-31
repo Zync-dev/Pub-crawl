@@ -6,7 +6,8 @@ import { DRINK_BY_KIND, DRINK_KINDS, formatUnits } from "@/lib/drinks";
 import { formatAgo } from "@/lib/geo";
 import { formatClock } from "@/lib/timer";
 import { notifyMove } from "@/lib/use-crew-notifications";
-import type { Crawl, Drink, DrinkKind, Stop } from "@/lib/types";
+import { closeUnansweredRollCall } from "@/lib/roll-call-undo";
+import type { Crawl, Drink, DrinkKind, Member, Stop } from "@/lib/types";
 import { useAsk } from "./ask";
 import type { CrawlActions } from "./crawl-app";
 // nav-live: Vis vej
@@ -20,6 +21,7 @@ import { AtPubReviews } from "./reviews/at-pub-reviews"; // pub-reviews
 export function NowTab({
   crawl,
   stops,
+  members,
   drinks,
   currentStop,
   nextStop,
@@ -32,6 +34,8 @@ export function NowTab({
 }: {
   crawl: Crawl;
   stops: Stop[];
+  // wiring: billedviseren viser, hvem der tog billedet.
+  members: Member[];
   drinks: Drink[];
   currentStop: Stop | null;
   nextStop: Stop | null;
@@ -48,7 +52,14 @@ export function NowTab({
       {/* Er alle med? (rollcall): kortet øverst, mens opråbet er åbent. */}
       <RollCallCard stops={stops} />
       {currentStop && remaining !== null ? (
-        <AtPub crawl={crawl} stops={stops} stop={currentStop} remaining={remaining} actions={actions} />
+        <AtPub
+          crawl={crawl}
+          stops={stops}
+          stop={currentStop}
+          remaining={remaining}
+          userId={userId}
+          actions={actions}
+        />
       ) : (
         <OnTheWay stops={stops} nextStop={nextStop} actions={actions} onOpenRoute={onOpenRoute} />
       )}
@@ -57,7 +68,7 @@ export function NowTab({
       {/* Omgange: hvis tur er det til at give? */}
       <NextRoundCard />
       {/* pub-reviews: stjerner og billeder fra pubben, I er på */}
-      {currentStop && <AtPubReviews stop={currentStop} />}
+      {currentStop && <AtPubReviews stop={currentStop} members={members} />}
       <Drinks
         drinks={drinks}
         stops={stops}
@@ -76,12 +87,14 @@ function AtPub({
   stops,
   stop,
   remaining,
+  userId,
   actions,
 }: {
   crawl: Crawl;
   stops: Stop[];
   stop: Stop;
   remaining: number;
+  userId: string;
   actions: CrawlActions;
 }) {
   const ask = useAsk();
@@ -112,12 +125,19 @@ function AtPub({
       cancel: "Ikke endnu",
     });
     if (!ok) return;
+    // wiring: fortrydes Videre, lukkes opråbet, Videre startede, hvis kun du har svaret.
+    // Fortryd kan først trykkes, når leave() har svaret, så started er sat til den tid.
+    let started: Promise<boolean> = Promise.resolve(false);
+    const undone = () =>
+      void started.then(async (began) => {
+        if (began && (await closeUnansweredRollCall(crawl.id, stop.id, userId))) void rollCall.refetch();
+      });
     // offline-undo: leave() giver true, når Videre er gemt. Først da får holdet besked og opråb.
-    if (!(await actions.leave())) return;
+    if (!(await actions.leave(undone))) return;
     // pwa-push: de andre får besked om, at holdet går videre.
     notifyMove(crawl, stop, following);
     // Er alle med? (rollcall): tæl holdet, når I går videre.
-    void rollCall.start(stop.id, following?.id ?? null);
+    started = rollCall.start(stop.id, following?.id ?? null);
   }
 
   return (

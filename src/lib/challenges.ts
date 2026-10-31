@@ -38,7 +38,11 @@ export function drawChallenge<T extends { name: string }>(
   people: T[],
   previous?: string | null,
 ): { text: string; target: T | null } {
-  const pool = CHALLENGES.filter((c) => c !== previous);
+  // previous er den udfyldte tekst, så skabeloner med {navn} sammenlignes med navnene sat ind.
+  const fills = [...people.map((p) => p.name), "Den yngste"];
+  const same = (c: string) =>
+    c === previous || (c.includes("{navn}") && fills.some((name) => c.replaceAll("{navn}", name) === previous));
+  const pool = CHALLENGES.filter((c) => !same(c));
   const template = pool[Math.floor(Math.random() * pool.length)];
   if (!template.includes("{navn}")) return { text: template, target: null };
   const target = people.length ? people[Math.floor(Math.random() * people.length)] : null;
