@@ -15,6 +15,7 @@ import { CrewTab } from "./crew-tab";
 import { Badge, Header, Icon, Spinner, TabBar } from "./ds";
 import { MapTab } from "./map-tab";
 import { NowTab } from "./now-tab";
+import { RoundsProvider } from "./rounds"; // Omgange
 import { StatsTab } from "./stats-tab";
 
 type Tab = "now" | "route" | "stats" | "crew";
@@ -281,6 +282,8 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
   })();
 
   return (
+    // Omgange: deler omgangene med Nu, Stillingen og Holdet.
+    <RoundsProvider crawlId={crawl.id} userId={userId} members={members} stops={stops} currentStopId={crawl.current_stop_id}>
     <div className="flex h-dvh flex-col overflow-hidden bg-cream-200">
       <Header eyebrow={header.eyebrow} title={header.title} left={back} right={headerRight} />
 
@@ -347,5 +350,6 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
 
       <TabBar items={[...TABS]} value={tab} onChange={changeTab} />
     </div>
+    </RoundsProvider>
   );
 }

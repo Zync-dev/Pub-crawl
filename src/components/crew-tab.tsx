@@ -11,6 +11,7 @@ import type { useLocationSharing } from "@/lib/use-location";
 import { useAsk } from "./ask";
 import type { CrawlActions } from "./crawl-app";
 import { Avatar, Badge, Button, Card, Switch, Tabs } from "./ds";
+import { RoundsGiven } from "./rounds"; // Omgange
 
 export function CrewTab({
   crawl,
@@ -120,6 +121,7 @@ function Crew({
               </div>
               <div className="text-[13px] text-muted">
                 {formatUnits(units)} gst.
+                <RoundsGiven userId={m.user_id} />
                 {m.located_at ? ` · set ${formatAgo(m.located_at, now)}` : ""}
               </div>
             </div>
