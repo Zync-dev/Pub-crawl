@@ -15,6 +15,7 @@ import { CrewTab } from "./crew-tab";
 import { Badge, Header, Icon, Spinner, TabBar } from "./ds";
 import { MapTab } from "./map-tab";
 import { NowTab } from "./now-tab";
+import { RollCallBadge, RollCallProvider, useRollCallWithToasts } from "./roll-call"; // Er alle med? (rollcall)
 import { StatsTab } from "./stats-tab";
 
 type Tab = "now" | "route" | "stats" | "crew";
@@ -205,6 +206,8 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
   const currentStop = stops.find((s) => s.id === crawl.current_stop_id) ?? null;
   const nextStop = currentStop ? null : (stops.find((s) => !s.visited_at) ?? null);
   const remaining = remainingMs(crawl, currentStop, now);
+  // Er alle med? (rollcall): opråbet deles af Nu, headeren og Videre-flowet via RollCallProvider.
+  const rollCall = useRollCallWithToasts(crawl.id, userId, members, now);
 
   const back = (
     <Link href="/" className="pc-btn pc-btn--ghost pc-btn--sm" style={{ paddingLeft: 6 }}>
@@ -229,8 +232,12 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
       </button>
     ) : undefined;
 
+  // Er alle med? (rollcall): mærket følger med på de andre faner, mens opråbet er åbent.
+  const rollCallBadge =
+    tab !== "now" && rollCall.open ? <RollCallBadge onOpen={() => changeTab("now")} /> : undefined;
+
   const headerRight =
-    data.offline || timerBadge ? (
+    data.offline || timerBadge || rollCallBadge ? (
       <div className="flex flex-col items-end gap-1.5">
         {data.offline && (
           <span className="pc-fade-in" role="status">
@@ -238,6 +245,7 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
           </span>
         )}
         {timerBadge}
+        {rollCallBadge}
       </div>
     ) : undefined;
 
@@ -281,6 +289,7 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
   })();
 
   return (
+    <RollCallProvider value={rollCall}>
     <div className="flex h-dvh flex-col overflow-hidden bg-cream-200">
       <Header eyebrow={header.eyebrow} title={header.title} left={back} right={headerRight} />
 
@@ -347,5 +356,6 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
 
       <TabBar items={[...TABS]} value={tab} onChange={changeTab} />
     </div>
+    </RollCallProvider>
   );
 }
