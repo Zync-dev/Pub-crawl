@@ -54,7 +54,7 @@ export function Home() {
         .rpc("create_crawl", { p_name: crawlName, p_member_name: name })
         .single<Crawl>();
       if (error || !data) throw error;
-      rememberCrawl({ code: data.code, name: data.name });
+      rememberCrawl({ code: data.code, name: data.name, id: data.id });
       router.push(`/t/${data.code}`);
     } catch (err) {
       setError(errorText(err));

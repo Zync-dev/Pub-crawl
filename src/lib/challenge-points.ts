@@ -40,10 +40,14 @@ export type ChallengeScore<T extends Person = Person> = {
 };
 
 // 1 point til den, udfordringen var til, eller 1 point til alle på holdet for en fællesudfordring.
+// Får den udfordringen, der er i gang (også null), tæller i alt kun den og dem, nogen har stemt om.
+// En udfordring fra et fortrudt tjek ind eller en, der blev trukket om, kan ingen stemme om.
+// Uden (undefined) tæller alle rækker, som før.
 export function challengePoints<T extends Person>(
   challenges: Challenge[],
   votes: ChallengeVote[],
   members: T[],
+  currentChallengeId?: string | null,
 ): { scores: ChallengeScore<T>[]; completed: number; total: number } {
   const memberIds = new Set(members.map((m) => m.user_id));
   const points = new Map<string, number>(members.map((m) => [m.user_id, 0]));
@@ -60,5 +64,19 @@ export function challengePoints<T extends Person>(
   const scores = members
     .map((member) => ({ member, points: points.get(member.user_id) ?? 0 }))
     .sort((a, b) => b.points - a.points || a.member.name.localeCompare(b.member.name, "da"));
-  return { scores, completed, total: challenges.length };
+  const voted = new Set(votes.map((v) => v.challenge_id));
+  const total =
+    currentChallengeId === undefined
+      ? challenges.length
+      : challenges.filter((c) => c.id === currentChallengeId || voted.has(c.id)).length;
+  return { scores, completed, total };
+}
+
+// Pladserne på tavlen: lige mange point giver samme plads (1, 1, 3).
+export function competitionRanks(scores: { points: number }[]) {
+  const ranks: number[] = [];
+  scores.forEach((s, i) => {
+    ranks.push(i > 0 && s.points === scores[i - 1].points ? ranks[i - 1] : i + 1);
+  });
+  return ranks;
 }

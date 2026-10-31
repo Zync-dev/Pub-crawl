@@ -1,15 +1,15 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ImageOff, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { usePhotoUrls } from "@/lib/photo-urls";
+import { photoUrlFailed, usePhotoUrls } from "@/lib/photo-urls";
 import type { Photo } from "@/lib/reviews-types";
 import type { Member } from "@/lib/types";
 import { formatTime } from "@/lib/timer";
 import { useReviews } from "@/lib/use-reviews";
 import { useAsk } from "../ask";
-import { Button, IconButton, Spinner } from "../ds";
+import { Button, Icon, IconButton, Spinner } from "../ds";
 
 // Billederne i fuld skærm: bladr med pilene eller ved at stryge, slet dine egne.
 export function PhotoViewer({
@@ -46,6 +46,33 @@ export function PhotoViewer({
     if (empty) onClose();
   }, [empty, onClose]);
 
+  // Telefonens tilbage-knap (og iOS' stryg fra kanten) lukker viseren i stedet for at forlade turen.
+  // Viseren lægger sit eget trin i historikken. Lukkes den på anden vis, tages trinnet af igen.
+  // Trinnet lægges først efter et øjeblik, så React's dobbelte effekt i udvikling ikke går tilbage.
+  const closeRef = useRef(onClose);
+  useEffect(() => {
+    closeRef.current = onClose;
+  }, [onClose]);
+  useEffect(() => {
+    let pushed = false;
+    let popped = false;
+    const onPop = () => {
+      popped = true;
+      closeRef.current();
+    };
+    const timer = setTimeout(() => {
+      // Next kopierer selv sine egne felter over i det nye trin.
+      window.history.pushState({ pcPhotoViewer: true }, "");
+      pushed = true;
+      window.addEventListener("popstate", onPop);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("popstate", onPop);
+      if (pushed && !popped && window.history.state?.pcPhotoViewer) window.history.back();
+    };
+  }, []);
+
   // Fokus ind i viseren og tilbage, hvor man kom fra, når den lukker.
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
@@ -57,8 +84,24 @@ export function PhotoViewer({
     function onKey(e: KeyboardEvent) {
       if (document.querySelector(".pc-dialog__scrim")) return;
       if (e.key === "Escape") onClose();
+      // Tab bliver inde i viseren, så man ikke havner på siden bagved.
+      else if (e.key === "Tab") trapFocus(e);
       else if (e.key === "ArrowLeft") setIndex((n) => Math.max(0, Math.min(n, photos.length - 1) - 1));
       else if (e.key === "ArrowRight") setIndex((n) => Math.min(photos.length - 1, n + 1));
+    }
+    function trapFocus(e: KeyboardEvent) {
+      const items = Array.from(root.current?.querySelectorAll<HTMLElement>("button:not([disabled])") ?? []);
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!first || !last) return;
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || !root.current?.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (active === last || !root.current?.contains(active))) {
+        e.preventDefault();
+        first.focus();
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -136,6 +179,11 @@ export function PhotoViewer({
             className="pc-fade-in h-full w-full object-contain"
             draggable={false}
           />
+        ) : photoUrlFailed(photo.path) ? (
+          <p className="pc-fade-in flex max-w-[260px] flex-col items-center gap-3 text-center text-[15px]" role="status">
+            <Icon name={ImageOff} size={32} color="var(--gold-500)" />
+            Billedet kan ikke hentes lige nu. Tjek forbindelsen.
+          </p>
         ) : (
           <Spinner size={28} label="Henter billedet" />
         )}

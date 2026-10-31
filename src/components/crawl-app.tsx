@@ -27,6 +27,7 @@ import { OutboxBadge } from "./outbox-badge";
 import { RollCallBadge, RollCallProvider, useRollCallWithToasts } from "./roll-call"; // Er alle med? (rollcall)
 import { RoundsProvider } from "./rounds"; // Omgange
 import { StatsTab } from "./stats-tab";
+import { HomeLink, StatusScreen } from "./status-screen";
 import { useUndoableActions, type UndoableActions } from "./use-undoable-actions";
 
 type Tab = "now" | "route" | "stats" | "crew" | "games";
@@ -399,9 +400,24 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
     </div>
   );
 
+  // arranger: taget af holdet. Turen er glemt på enheden, så vi siger hvorfor i stedet for bare at forsvinde.
+  if (arranger.removed) {
+    return (
+      <StatusScreen eyebrow={crawl.name} title="Du er ikke længere på holdet" actions={<HomeLink variant="primary" />}>
+        Arrangøren har taget dig af holdet. Spørg arrangøren, hvis det er en fejl.
+      </StatusScreen>
+    );
+  }
+
   // games: GamesProvider deler udfordringspoint og spilresultater mellem Nu, Stillingen og Spil.
   return (
-    <GamesProvider crawlId={crawl.id} userId={userId} members={members}>
+    <GamesProvider
+      crawlId={crawl.id}
+      userId={userId}
+      members={members}
+      currentChallengeId={crawl.current_challenge_id ?? null}
+      toastResults={tab !== "games"}
+    >
       {/* Omgange: deler omgangene med Nu, Stillingen og Holdet. */}
       <RoundsProvider crawlId={crawl.id} crawlCode={crawl.code} userId={userId} members={members} stops={stops} currentStopId={crawl.current_stop_id}>
         {/* Er alle med? (rollcall) */}

@@ -25,6 +25,10 @@ class ReviewsStore {
   private refs = 0;
   private closeTimer: ReturnType<typeof setTimeout> | null = null;
   private teardown: (() => void) | null = null;
+  // Nyeste stjerne-tryk pr. pub. Kun svaret på det nyeste må rette det, der vises.
+  private rateSeq = new Map<string, number>();
+  // Tælles op ved hver lokal skrivning. Et svar på en hentning, der gik i gang før, smides væk.
+  private writes = 0;
 
   constructor(readonly crawlId: string) {}
 
@@ -63,19 +67,32 @@ class ReviewsStore {
 
   refetch = async () => {
     const supabase = getSupabase();
-    const [session, ratings, photos] = await Promise.all([
-      supabase.auth.getSession(),
-      supabase.from("stop_ratings").select("*").eq("crawl_id", this.crawlId).returns<StopRating[]>(),
-      supabase.from("photos").select("*").eq("crawl_id", this.crawlId).returns<Photo[]>(),
-    ]);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const version = this.writes;
+      const [session, ratings, photos] = await Promise.all([
+        supabase.auth.getSession(),
+        supabase.from("stop_ratings").select("*").eq("crawl_id", this.crawlId).returns<StopRating[]>(),
+        supabase.from("photos").select("*").eq("crawl_id", this.crawlId).returns<Photo[]>(),
+      ]);
+      if (version !== this.writes) continue;
+      this.apply(session.data.session?.user.id ?? null, ratings, photos);
+      return;
+    }
+  };
+
+  private apply(
+    userId: string | null,
+    ratings: { data: StopRating[] | null; error: unknown },
+    photos: { data: Photo[] | null; error: unknown },
+  ) {
     this.set((prev) => ({
       ...prev,
-      userId: session.data.session?.user.id ?? prev.userId,
+      userId: userId ?? prev.userId,
       ratings: ratings.data ?? prev.ratings,
       photos: (photos.data ?? prev.photos).slice().sort(byTime),
       loaded: prev.loaded || (!ratings.error && !photos.error),
     }));
-  };
+  }
 
   private open() {
     const supabase = getSupabase();
@@ -139,6 +156,9 @@ class ReviewsStore {
     const supabase = getSupabase();
     const userId = this.state.userId ?? (await supabase.auth.getSession()).data.session?.user.id ?? null;
     if (!userId) return false;
+    const seq = (this.rateSeq.get(stopId) ?? 0) + 1;
+    this.rateSeq.set(stopId, seq);
+    this.writes++;
     const before = this.state.ratings.find((r) => r.stop_id === stopId && r.user_id === userId);
     const now = new Date().toISOString();
     this.upsertRating({
@@ -152,6 +172,9 @@ class ReviewsStore {
     const { data, error } = await supabase
       .rpc("rate_stop", { p_stop: stopId, p_stars: stars })
       .single<StopRating>();
+    this.writes++;
+    // Et nyere tryk på samme pub er på vej. Det (og Realtime) bestemmer, hvad der står til sidst.
+    if (this.rateSeq.get(stopId) !== seq) return !error && Boolean(data);
     if (error || !data) {
       this.set((prev) => ({
         ...prev,
@@ -160,6 +183,8 @@ class ReviewsStore {
           ...(before ? [before] : []),
         ],
       }));
+      // Det tidligere tryk kan også være fejlet, så vi spørger databasen.
+      void this.refetch();
       return false;
     }
     this.upsertRating(data);
@@ -170,6 +195,7 @@ class ReviewsStore {
   async upload(file: File, stopId: string | null) {
     const supabase = getSupabase();
     const id = newId();
+    this.writes++;
     this.set((prev) => ({ ...prev, pending: [...prev.pending, { id, stopId }] }));
     try {
       const { blob, width, height } = await preparePhoto(file);
@@ -191,6 +217,7 @@ class ReviewsStore {
     } catch {
       return false;
     } finally {
+      this.writes++;
       this.set((prev) => ({ ...prev, pending: prev.pending.filter((p) => p.id !== id) }));
     }
   }
@@ -198,8 +225,10 @@ class ReviewsStore {
   // Rækken slettes først. Så kan et billede aldrig stå i appen uden en fil bag sig.
   async remove(photo: Photo) {
     const supabase = getSupabase();
+    this.writes++;
     this.set((prev) => ({ ...prev, photos: prev.photos.filter((x) => x.id !== photo.id) }));
     const { error } = await supabase.from("photos").delete().eq("id", photo.id);
+    this.writes++;
     if (error) {
       this.addPhoto(photo);
       return false;

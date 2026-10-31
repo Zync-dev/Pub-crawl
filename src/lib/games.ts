@@ -1,4 +1,4 @@
-import type { CoinSide, GameResult } from "./games-types";
+import type { ChallengeVote, CoinSide, GameResult } from "./games-types";
 
 type Person = { user_id: string; name: string };
 
@@ -17,14 +17,13 @@ export function flipCoin(): CoinSide {
   return Math.random() < 0.5 ? "plat" : "krone";
 }
 
-// Tal på hjulet i "Hvem skal …?": flere omgange gennem holdet og til sidst den valgte.
-export function reelSequence<T>(people: T[], picked: T, rounds = 3): T[] {
-  if (people.length < 2) return [picked];
-  const start = Math.floor(Math.random() * people.length);
-  const spin = Array.from({ length: people.length * rounds }, (_, i) => people[(start + i) % people.length]);
-  // Den sidste før den valgte må ikke være den samme, ellers ser hjulet ud til at stå stille.
-  if (spin[spin.length - 1] === picked) spin.pop();
-  return [...spin, picked];
+// Navnene i "Hvem skal …?": et par andre fra holdet, der toner frem efter hinanden, og til sidst den valgte.
+export function reelSequence<T>(people: T[], picked: T, count = 3): T[] {
+  const others = people.filter((p) => p !== picked);
+  if (!others.length) return [picked];
+  const start = Math.floor(Math.random() * others.length);
+  const lead = Array.from({ length: Math.min(count - 1, others.length) }, (_, i) => others[(start + i) % others.length]);
+  return [...lead, picked];
 }
 
 export function cleanPickText(text: string) {
@@ -56,9 +55,13 @@ export function parseGameResult(payload: unknown): GameResult | null {
   return null;
 }
 
-// "Mikkel blev valgt: henter vand". Giver null, hvis afsenderen eller den valgte ikke er på holdet.
-export function describeResult(result: GameResult, members: Person[]) {
-  const name = (id: string) => members.find((m) => m.user_id === id)?.name ?? null;
+// "Mikkel blev valgt: henter vand", men "Du blev valgt", når det handler om den, der læser.
+// Giver null, hvis afsenderen eller den valgte ikke er på holdet.
+export function describeResult(result: GameResult, members: Person[], viewerId?: string) {
+  const name = (id: string) =>
+    id === viewerId && members.some((m) => m.user_id === id)
+      ? "Du"
+      : (members.find((m) => m.user_id === id)?.name ?? null);
   const from = name(result.from);
   if (!from) return null;
   if (result.kind === "pick") {
@@ -71,4 +74,13 @@ export function describeResult(result: GameResult, members: Person[]) {
     return b === undefined ? `${from} slog ${a}` : `${from} slog ${a} og ${b} · ${a + b} i alt`;
   }
   return `${from} slog plat eller krone: ${COIN_LABEL[result.coin]}`;
+}
+
+// Kom en stemme ikke med, lægges den tidligere tilbage (eller ingen). En nyere stemme fra samme
+// person på samme udfordring (et nyt tryk eller Realtime) får lov at blive.
+export function rollbackVote(list: ChallengeVote[], failed: ChallengeVote, before: ChallengeVote | undefined) {
+  const same = (v: ChallengeVote) => v.challenge_id === failed.challenge_id && v.user_id === failed.user_id;
+  const current = list.find(same);
+  if (current && current !== failed) return list;
+  return [...list.filter((v) => !same(v)), ...(before ? [before] : [])];
 }

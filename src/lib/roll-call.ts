@@ -54,3 +54,23 @@ export function joinNames(names: string[]): string {
   if (names.length === 3) return `${names[0]}, ${names[1]} og ${names[2]}`;
   return `${names[0]}, ${names[1]} og ${names.length - 2} til`;
 }
+
+// "Alle er med" vises kun lige når et opråb, man selv så åbent, lukker med alle svar.
+// Svaret og lukningen kan nå frem i hver sin rækkefølge, så der er et par sekunders frist.
+// Derefter glemmes opråbet, så toasten ikke kommer en time senere, fordi den sidste gik hjem.
+export const ALL_IN_GRACE_MS = 5_000;
+
+export type SeenOpen = { id: string; endedAt: number | null } | null;
+
+export function allInToastStep(
+  seen: SeenOpen,
+  call: { id: string; open: boolean; closed: boolean; everyoneIn: boolean },
+  now: number,
+): { seen: SeenOpen; toast: boolean } {
+  if (call.open) return { seen: { id: call.id, endedAt: null }, toast: false };
+  if (!seen || seen.id !== call.id) return { seen, toast: false };
+  const endedAt = seen.endedAt ?? now;
+  if (now - endedAt > ALL_IN_GRACE_MS) return { seen: null, toast: false };
+  if (call.closed && call.everyoneIn) return { seen: null, toast: true };
+  return { seen: { id: call.id, endedAt }, toast: false };
+}

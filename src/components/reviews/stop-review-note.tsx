@@ -10,7 +10,8 @@ import { PhotoViewer } from "./photo-viewer";
 import { StarRating } from "./star-rating";
 
 // Noten i StopCard på Ruten: den gamle tekst plus gennemsnittet, og for besøgte pubs
-// stjernerne og et tryk til pubbens billeder.
+// stjernerne og et tryk til pubbens billeder. Den pub, I er på nu, får sine stjerner under Nu:
+// i kortet her er der ikke plads til dem ved siden af "Nu" og Vis vej.
 export function StopReviewNote({
   stop,
   text,
@@ -41,15 +42,17 @@ export function StopReviewNote({
   return (
     <>
       {line}
-      {!editing && visited && (
+      {!editing && visited && (!dark || photos.length > 0) && (
         <span className="-ml-2.5 mt-1 flex flex-wrap items-center gap-x-1" onClick={(e) => e.stopPropagation()}>
-          <StarRating
-            value={summary?.mine ?? null}
-            onChange={(n) => void rate(n)}
-            size={20}
-            tone={dark ? "dark" : "light"}
-            label={`Stjerner til ${stop.name}`}
-          />
+          {!dark && (
+            <StarRating
+              value={summary?.mine ?? null}
+              onChange={(n) => void rate(n)}
+              size={20}
+              tone="light"
+              label={`Stjerner til ${stop.name}`}
+            />
+          )}
           {photos.length > 0 && (
             <button
               type="button"

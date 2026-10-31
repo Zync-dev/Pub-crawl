@@ -51,6 +51,35 @@ describe("at give en omgang", () => {
   });
 });
 
+describe("give_round (0018)", () => {
+  type Given = { round: Round; existed: boolean };
+
+  it("skriver kun én omgang, når to trykker samtidig", async () => {
+    const [x, y] = await Promise.all([
+      a.c.rpc("give_round", { p_crawl: crawl.id, p_buyer: a.id }),
+      b.c.rpc("give_round", { p_crawl: crawl.id, p_buyer: a.id }),
+    ]);
+    const first = ok(x) as Given;
+    const second = ok(y) as Given;
+    expect(first.round.id).toBe(second.round.id);
+    expect([first.existed, second.existed].sort()).toEqual([false, true]);
+    const creator = first.round.created_by === a.id ? a : b;
+    ok(await creator.c.from("rounds").delete().eq("id", first.round.id));
+  });
+
+  it("skriver en til, når man beder om det", async () => {
+    const again = ok(await a.c.rpc("give_round", { p_crawl: crawl.id, p_buyer: a.id, p_force: true })) as Given;
+    expect(again.existed).toBe(false);
+    expect(again.round.created_by).toBe(a.id);
+    ok(await a.c.from("rounds").delete().eq("id", again.round.id));
+  });
+
+  it("afviser udenforstående og en giver uden for holdet", async () => {
+    denied(await o.c.rpc("give_round", { p_crawl: crawl.id, p_buyer: a.id }));
+    denied(await a.c.rpc("give_round", { p_crawl: crawl.id, p_buyer: o.id }));
+  });
+});
+
 describe("udenforstående", () => {
   it("ser ingen omgange og kan hverken skrive eller slette", async () => {
     expect(ok(await o.c.from("rounds").select("id").eq("crawl_id", crawl.id))).toEqual([]);

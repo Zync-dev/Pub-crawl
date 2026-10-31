@@ -1,21 +1,24 @@
 "use client";
 
-import { challengePoints } from "@/lib/challenge-points";
+import { challengePoints, competitionRanks } from "@/lib/challenge-points";
 import { memberTone } from "@/lib/colors";
 import { Avatar, Badge, Card, SectionTitle } from "../ds";
 import { useGamesContext } from "./games-provider";
 
 // Pointtavlen for udfordringer i Stillingen. Vises først, når der er trukket en udfordring.
 export function ChallengeRanking() {
-  const { challenges, votes, members, userId } = useGamesContext();
+  const { challenges, votes, members, userId, currentChallengeId } = useGamesContext();
   if (!challenges.length || !members.length) return null;
-  const { scores, completed, total } = challengePoints(challenges, votes, members);
+  const { scores, completed, total } = challengePoints(challenges, votes, members, currentChallengeId);
   const top = scores[0]?.points ?? 0;
+  const ranks = competitionRanks(scores);
+  // "Fører" kun til én. Er føringen delt (fx efter en fællesudfordring), står det i overskriften.
+  const leaders = top > 0 ? scores.filter((s) => s.points === top).length : 0;
 
   return (
     <section id="udfordringer" style={{ scrollMarginTop: 16 }}>
       <SectionTitle
-        eyebrow="Udfordringer"
+        eyebrow={leaders > 1 ? "Udfordringer · delt føring" : "Udfordringer"}
         title="Hvem klarer dem?"
         right={
           <Badge tone="outline">
@@ -27,10 +30,10 @@ export function ChallengeRanking() {
         <ol className="divide-y divide-line">
           {scores.map((s, i) => {
             const me = s.member.user_id === userId;
-            const leader = top > 0 && s.points === top;
+            const leader = leaders === 1 && s.points === top;
             return (
               <li key={s.member.user_id} className="flex min-h-14 items-center gap-3 px-4 py-2">
-                <span className="w-5 text-center font-serif text-[18px] text-muted">{i + 1}</span>
+                <span className="w-5 text-center font-serif text-[18px] text-muted">{ranks[i]}</span>
                 <Avatar name={s.member.name} tone={memberTone(s.member.color)} size={32} ring={me} />
                 <span className="min-w-0 flex-1 truncate font-serif text-[19px] leading-tight">
                   {s.member.name}

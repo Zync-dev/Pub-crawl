@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { removeRound, sortRounds, upsertRound, type Round } from "./rounds";
 import { getSupabase } from "./supabase";
 
@@ -8,17 +8,28 @@ import { getSupabase } from "./supabase";
 export function useRounds(crawlId: string) {
   const [rounds, setRounds] = useState<Round[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // Tælles op ved hver lokal skrivning (før og efter). Et svar på en hentning, der gik i gang før,
+  // kan mangle en omgang, der lige er givet, så det smides væk, og vi henter igen.
+  const writes = useRef(0);
+  const wrote = useCallback(() => {
+    writes.current++;
+  }, []);
 
   const refetch = useCallback(async () => {
-    const { data, error } = await getSupabase()
-      .from("rounds")
-      .select("*")
-      .eq("crawl_id", crawlId)
-      .returns<Round[]>();
-    if (error || !data) return;
-    // Omgange, der stadig er på vej til databasen, bliver liggende.
-    setRounds((prev) => sortRounds([...data, ...prev.filter((r) => r.id.startsWith("tmp-"))]));
-    setLoaded(true);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const version = writes.current;
+      const { data, error } = await getSupabase()
+        .from("rounds")
+        .select("*")
+        .eq("crawl_id", crawlId)
+        .returns<Round[]>();
+      if (error || !data) return;
+      if (version !== writes.current) continue;
+      // Omgange, der stadig er på vej til databasen, bliver liggende.
+      setRounds((prev) => sortRounds([...data, ...prev.filter((r) => r.id.startsWith("tmp-"))]));
+      setLoaded(true);
+      return;
+    }
   }, [crawlId]);
 
   useEffect(() => {
@@ -58,5 +69,5 @@ export function useRounds(crawlId: string) {
     };
   }, [crawlId, refetch]);
 
-  return { rounds, loaded, setRounds, refetch };
+  return { rounds, loaded, setRounds, refetch, wrote };
 }

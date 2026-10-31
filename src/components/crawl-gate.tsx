@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { readName, saveName } from "@/lib/name";
-import { rememberCrawl } from "@/lib/recent";
+import { forgetCrawl, recentByCode, rememberCrawl } from "@/lib/recent";
 import { ensureUser, errorText, getSupabase, supabaseConfigured } from "@/lib/supabase";
 import type { Crawl } from "@/lib/types";
 import { AskProvider } from "./ask";
@@ -31,9 +31,21 @@ export function CrawlGate({ code }: { code: string }) {
         .eq("code", code)
         .maybeSingle<Crawl>();
       if (crawl) {
-        rememberCrawl({ code: crawl.code, name: crawl.name });
+        rememberCrawl({ code: crawl.code, name: crawl.name, id: crawl.id });
         setState({ step: "ready", crawl, userId: user.id });
         return;
+      }
+      // Har arrangøren lavet en ny kode, mens appen var lukket, findes turen stadig på sit id.
+      const recentId = recentByCode(code)?.id;
+      if (recentId) {
+        const { data: moved } = await supabase.from("crawls").select("*").eq("id", recentId).maybeSingle<Crawl>();
+        if (moved) {
+          forgetCrawl(code);
+          rememberCrawl({ code: moved.code, name: moved.name, id: moved.id });
+          window.history.replaceState(null, "", `/t/${moved.code}`);
+          setState({ step: "ready", crawl: moved, userId: user.id });
+          return;
+        }
       }
       const { data: preview, error } = await supabase
         .rpc("crawl_preview", { p_code: code })
@@ -102,7 +114,7 @@ export function CrawlGate({ code }: { code: string }) {
           crawlName={state.name}
           memberCount={state.memberCount}
           onJoined={(crawl) => {
-            rememberCrawl({ code: crawl.code, name: crawl.name });
+            rememberCrawl({ code: crawl.code, name: crawl.name, id: crawl.id });
             setState({ step: "ready", crawl, userId: state.userId });
           }}
         />

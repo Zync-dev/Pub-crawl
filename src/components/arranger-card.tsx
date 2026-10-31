@@ -44,13 +44,19 @@ export function ArrangerCard({
     const ok = await ask.confirm({
       eyebrow: "Fjern fra holdet",
       title: `${member.name} skal ikke med?`,
-      body: `${genitive(member.name)} drinks forsvinder fra stillingen. Tag en ny kode bagefter, så koden ikke virker igen.`,
+      body: `${genitive(member.name)} drinks, omgange og point forsvinder fra stillingen. Tag en ny kode bagefter, så ${member.name} ikke kan komme ind igen.`,
       confirm: "Fjern fra holdet",
       cancel: "Behold",
       danger: true,
     });
     if (!ok) return;
-    await act(`remove:${member.user_id}`, () => arranger.removeMember(member), `${member.name} er taget af holdet`);
+    setBusy(`remove:${member.user_id}`);
+    const error = await arranger.removeMember(member);
+    setBusy(null);
+    if (error) return ask.toast(error, "danger");
+    ask.toast(`${member.name} er taget af holdet`, {
+      action: { label: "Ny kode", onClick: () => void rotate() },
+    });
   }
 
   async function rotate() {
