@@ -32,7 +32,8 @@ export function pushPermission(): NotificationPermission | null {
   }
 }
 
-function keyBytes(base64: string) {
+// VAPID-nøglen er base64url uden padding. PushManager vil have rå bytes.
+export function keyBytes(base64: string) {
   const padded = (base64 + "=".repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/");
   const raw = atob(padded);
   const bytes = new Uint8Array(raw.length);

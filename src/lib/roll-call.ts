@@ -36,10 +36,14 @@ export function rollCallEndedAt(call: RollCall): number {
 }
 
 // Den, der svarede sidst. Kun interessant, når mere end én har svaret.
+// Kun folk, der stadig er på holdet, tæller. Tiderne sammenlignes som tid, for et svar,
+// vi selv har lagt ind, skrives "…Z", mens databasens skrives "…+00:00" med mikrosekunder.
 export function lastIn(answers: RollCallAnswer[], members: Member[]): { member: Member; at: string } | null {
-  if (answers.length < 2) return null;
-  const last = answers.reduce((a, b) => (b.answered_at > a.answered_at ? b : a));
-  const member = members.find((m) => m.user_id === last.user_id);
+  const byId = new Map(members.map((m) => [m.user_id, m]));
+  const here = answers.filter((a) => byId.has(a.user_id));
+  if (here.length < 2) return null;
+  const last = here.reduce((a, b) => (Date.parse(b.answered_at) > Date.parse(a.answered_at) ? b : a));
+  const member = byId.get(last.user_id);
   return member ? { member, at: last.answered_at } : null;
 }
 
