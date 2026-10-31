@@ -8,6 +8,7 @@ import type { Crawl, Drink, DrinkKind, Stop } from "@/lib/types";
 import { useAsk } from "./ask";
 import type { CrawlActions } from "./crawl-app";
 import { Button, Card, Icon, SectionTitle } from "./ds";
+import { NextRoundCard } from "./rounds"; // Omgange
 
 export function NowTab({
   crawl,
@@ -39,6 +40,8 @@ export function NowTab({
       ) : (
         <OnTheWay stops={stops} nextStop={nextStop} actions={actions} onOpenRoute={onOpenRoute} />
       )}
+      {/* Omgange: hvis tur er det til at give? */}
+      <NextRoundCard />
       <Drinks drinks={drinks} stops={stops} userId={userId} currentStop={currentStop} now={now} actions={actions} />
     </div>
   );
