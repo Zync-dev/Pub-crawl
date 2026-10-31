@@ -4,10 +4,13 @@ import {
   buildRecap,
   challengeSummary,
   drinkTotals,
+  eveningOver,
+  EVENING_OVER_MS,
   fitText,
   formatDuration,
   formatLeg,
   formatRecapDate,
+  formatRecapDay,
   joinAll,
   photoSummary,
   popularDrink,
@@ -19,6 +22,7 @@ import {
   recapStatusLabel,
   rollCallSummary,
   roundsSummary,
+  SHARE_LINES,
   shareCard,
   topDrinkers,
   walkedMeters,
@@ -71,6 +75,25 @@ function call(id: string, createdAt: string): RollCall {
 function answer(callId: string, user: string, answeredAt: string): RollCallAnswer {
   return { roll_call_id: callId, user_id: user, crawl_id: "c1", answered_at: answeredAt };
 }
+
+describe("eveningOver", () => {
+  const a = { ...stop("a", 0), visited_at: T("22:00") };
+  it("er først slut efter tre timer uden check-in, afgang eller drink", () => {
+    expect(eveningOver([a], [], at("22:00") + EVENING_OVER_MS - 1)).toBe(false);
+    expect(eveningOver([a], [], at("22:00") + EVENING_OVER_MS)).toBe(true);
+    const late = [drink("u1", "beer", 1, T("23:30"), "a")];
+    expect(eveningOver([a], late, at("22:00") + EVENING_OVER_MS)).toBe(false);
+  });
+
+  it("slutter aldrig en aften, der ikke er begyndt", () => {
+    expect(eveningOver([stop("a", 0)], [], at("23:00"))).toBe(false);
+  });
+
+  it("gør status til gået", () => {
+    expect(recapStatus([a, stop("b", 1)], "a", true)).toBe("done");
+    expect(recapStatus([stop("b", 1)], null, true)).toBe("empty");
+  });
+});
 
 describe("recapStatus", () => {
   it("er tom, når ingen pub er besøgt", () => {
@@ -126,6 +149,21 @@ describe("recapRoute", () => {
     expect(legs[2].leftAt).toBe(at("20:45"));
     const early = recapRoute([a, b, c], [], null, at("20:10"));
     expect(early[2].leftAt).toBe(at("20:10"));
+  });
+
+  it("bliver en halv time efter sidste drink på sidste pub, hvis det er senere end planen", () => {
+    const drinks = [drink("u1", "beer", 1, T("21:00"), "c")];
+    const legs = recapRoute([a, b, c], drinks, null, at("23:00"));
+    expect(legs[2].leftAt).toBe(at("21:30"));
+    expect(recapRoute([a, b, c], drinks, null, at("21:10"))[2].leftAt).toBe(at("21:10"));
+  });
+
+  it("lukker pubben, I stod på, når aftenen er slut", () => {
+    const drinks = [drink("u1", "beer", 1, T("20:20"), "c")];
+    const legs = recapRoute([a, b, c], drinks, "c", at("12:00") + 24 * 60 * MIN, true);
+    expect(legs[2].here).toBe(false);
+    expect(legs[2].leftAt).toBe(at("20:50"));
+    expect(legs[2].stayMs).toBe(50 * MIN);
   });
 
   it("tæller tiden indtil nu på den pub, I er på", () => {
@@ -364,6 +402,10 @@ describe("formatering", () => {
     expect(formatRecapDate("2026-11-06T23:30:00.000Z")).toBe("lørdag 7. november 2026");
   });
 
+  it("skriver en kort dato til sidehovedet", () => {
+    expect(formatRecapDay(T("21:00"))).toBe("fredag 6. november");
+  });
+
   it("tager datoen fra første check-in", () => {
     const stops = [{ ...stop("a", 0), visited_at: T("19:00") }, { ...stop("b", 1), visited_at: T("18:00") }];
     expect(recapDate(crawl({ created_at: "2026-11-01T10:00:00.000Z" }), stops)).toBe(T("18:00"));
@@ -458,10 +500,11 @@ describe("buildRecap og shareCard", () => {
     expect(card.figures.map((f) => f.label)).toEqual(["Genstande", "Drinks", "Pubs", "Gået"]);
     expect(card.figures[0].value).toBe("4");
     expect(card.figures[2].value).toBe("2");
+    // Seks højdepunkter og et billede, men kun plads til fem: billedet og "Mest bestilt" ryger.
+    expect(card.lines).toHaveLength(SHARE_LINES);
     expect(card.lines.map((l) => l.label)).toEqual([
       "Stillingen",
       "Aftenens bedste pub",
-      "Mest bestilt",
       "Flest udfordringspoint",
       "Flest omgange",
       "Oftest sidst med",
@@ -470,6 +513,43 @@ describe("buildRecap og shareCard", () => {
     expect(card.lines[1].value).toBe("Kronen · 5,0 stjerner");
     expect(card.route).toBe("Kronen  ·  Hjørnet");
     expect(shareCard(buildRecap(input()), 2).lines).toHaveLength(2);
+  });
+
+  it("tager det mest bestilte og billederne med, når der er plads", () => {
+    const card = shareCard(buildRecap(input({ rollCalls: [], rollCallAnswers: [], challenges: [], votes: [] })));
+    expect(card.lines.map((l) => l.label)).toEqual([
+      "Stillingen",
+      "Aftenens bedste pub",
+      "Mest bestilt",
+      "Flest omgange",
+      "Billeder",
+    ]);
+  });
+
+  it("deler flest omgange ved lighed", () => {
+    const card = shareCard(buildRecap(input({ rounds: [round("r1", "u2"), round("r2", "u1"), round("r3", "u3")] })));
+    expect(card.lines.find((l) => l.label === "Flest omgange")?.value).toBe("Freja, Lukas og Mikkel · 1 omgang");
+  });
+
+  it("slutter aftenen, når der er gået længe uden nyt, også uden Videre", () => {
+    // Sidste check-in 18:50 og sidste drink 19:00 på Hjørnet, som stadig er aktuel.
+    const live = buildRecap(input({ crawl: crawl({ current_stop_id: "b" }), now: at("21:59") }));
+    expect(live.status).toBe("live");
+    expect(live.route[1].here).toBe(true);
+    const next = buildRecap(input({ crawl: crawl({ current_stop_id: "b" }), now: at("19:00") + EVENING_OVER_MS }));
+    expect(next.status).toBe("done");
+    const last = next.route[1];
+    expect(last.here).toBe(false);
+    expect(last.leftEstimated).toBe(true);
+    // En halv time efter sidste drink (19:30) er senere end planen (30 min., 19:20).
+    expect(last.leftAt).toBe(at("19:30"));
+    expect(shareCard(next).subtitle).toBe("fredag 6. november 2026 · Ruten er gået");
+  });
+
+  it("slutter også, når de sidste planlagte pubs blev sprunget over", () => {
+    const skipped = input({ stops: [...input().stops, stop("c", 2)] });
+    expect(buildRecap(skipped).status).toBe("live");
+    expect(buildRecap({ ...skipped, now: at("23:00") }).status).toBe("done");
   });
 
   it("viser pubs som besøgt/planlagt og har ingen linjer uden data", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Challenge, ChallengeVote } from "./games-types";
 import type { RecapStop } from "./recap";
 import type { RollCall, RollCallAnswer } from "./roll-call";
@@ -42,8 +42,13 @@ export function useRecapData(initial: Crawl) {
   });
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
+  // Genhentninger kan overlappe (vist igen, online, interval). Kun det nyeste svar må lande,
+  // ellers kan et gammelt kald, der hang på dårligt net, skrive ældre tal oven i nyere.
+  const latest = useRef(0);
 
-  const refetch = useCallback(async () => {
+  // true, når det nyeste svar er landet.
+  const refetch = useCallback(async (): Promise<boolean> => {
+    const request = ++latest.current;
     const supabase = getSupabase();
     const byCrawl = (table: string) => supabase.from(table).select("*").eq("crawl_id", crawlId);
     try {
@@ -58,6 +63,7 @@ export function useRecapData(initial: Crawl) {
         byCrawl("roll_calls").returns<RollCall[]>(),
         byCrawl("roll_call_answers").returns<RollCallAnswer[]>(),
       ]);
+      if (request !== latest.current) return false;
       // Kernetabellerne skal svare. De andre er ekstra: fejler én, bruger vi det, vi havde.
       if (crawl.error || members.error || stops.error || drinks.error) throw crawl.error ?? members.error ?? stops.error ?? drinks.error;
       setData((prev) => ({
@@ -73,8 +79,10 @@ export function useRecapData(initial: Crawl) {
       }));
       setFailed(false);
       setLoaded(true);
+      return true;
     } catch {
-      setFailed(true);
+      if (request === latest.current) setFailed(true);
+      return false;
     }
   }, [crawlId]);
 

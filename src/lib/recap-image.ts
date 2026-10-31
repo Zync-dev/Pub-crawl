@@ -1,6 +1,6 @@
 "use client";
 
-import { fitText, type ShareCard } from "./recap";
+import { fitText, SHARE_LINES, type ShareCard } from "./recap";
 
 // Delebilledet til Aftenens regnskab: 1080 × 1350, racing green med dobbelt guldstreg,
 // DM Serif Display i kursiv til overskrifter og Libre Franklin til resten.
@@ -150,15 +150,16 @@ export async function renderRecapImage(card: ShareCard): Promise<Blob> {
 
   doubleRule(ctx, left, right, 628, c.gold);
 
-  // Højdepunkterne
+  // Højdepunkterne. Der er plads til SHARE_LINES over ruten, og shareCard vælger dem.
+  // Lange linjer (fx top 3 med fulde navne) får mindre skrift, før de klippes.
   ctx.textAlign = "left";
   let y = 694;
-  for (const line of card.lines.slice(0, 5)) {
+  for (const line of card.lines.slice(0, SHARE_LINES)) {
     ctx.fillStyle = c.goldLight;
     ctx.font = `700 20px ${sans}`;
     trackedFit(ctx, line.label.toUpperCase(), 6, width).draw(left, y);
     ctx.fillStyle = c.cream;
-    ctx.font = `italic 44px ${serif}`;
+    fitFont(ctx, line.value, (px) => `italic ${px}px ${serif}`, 44, 30, width);
     ctx.fillText(fitText(line.value, width, (s) => ctx.measureText(s).width), left, y + 50);
     y += 94;
   }
