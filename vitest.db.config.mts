@@ -15,6 +15,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/db/**/*.test.ts"],
+    // Logger testbrugerne ind én gang og genbruger dem (se tests/db/setup.ts).
+    globalSetup: ["tests/db/setup.ts"],
     testTimeout: 30_000,
     hookTimeout: 30_000,
     // Testene bygger videre på hinanden i én tur.

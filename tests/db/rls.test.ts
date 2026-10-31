@@ -1,33 +1,18 @@
 // Integrationstest af rettighederne i Supabase. Kør med `pnpm test:db` (kræver netværk og anonyme logins).
 // Opretter en tur ved navn "Test db" med to deltagere og en udenforstående og rydder op ved at forlade den.
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Crawl, Drink, Stop } from "@/lib/types";
+import { anon as client, leave, users, type TestUser } from "./helpers";
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-
-function client() {
-  if (!url || !key) throw new Error("NEXT_PUBLIC_SUPABASE_URL og NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY mangler i .env.local");
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-}
-
-async function signedIn() {
-  const c = client();
-  const { data, error } = await c.auth.signInAnonymously();
-  if (error || !data.user) throw error ?? new Error("Ingen bruger");
-  return { c, id: data.user.id };
-}
-
-let a: { c: SupabaseClient; id: string };
-let b: { c: SupabaseClient; id: string };
-let outsider: { c: SupabaseClient; id: string };
+let a: TestUser;
+let b: TestUser;
+let outsider: TestUser;
 let crawl: Crawl;
 let stop: Stop;
 let drinkA: Drink;
 
 beforeAll(async () => {
-  [a, b, outsider] = await Promise.all([signedIn(), signedIn(), signedIn()]);
+  ({ a, b, o: outsider } = users());
   const { data, error } = await a.c.rpc("create_crawl", { p_name: "Test db", p_member_name: "Test A" }).single<Crawl>();
   if (error || !data) throw error ?? new Error("Ingen tur");
   crawl = data;
@@ -35,12 +20,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // Man forlader turen ved at slette sin egen deltagerrække. Drinks følger med.
-  for (const u of [b, a]) {
-    if (!u || !crawl) continue;
-    await u.c.from("members").delete().eq("crawl_id", crawl.id).eq("user_id", u.id);
-    await u.c.auth.signOut();
-  }
-  await outsider?.c.auth.signOut();
+  await leave(crawl, b, a);
 });
 
 describe("create_crawl, crawl_preview og join_crawl", () => {
