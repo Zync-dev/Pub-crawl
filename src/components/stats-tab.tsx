@@ -2,7 +2,7 @@
 
 import { memberTone } from "@/lib/colors";
 import { DRINK_BY_KIND, DRINK_KINDS, formatUnits } from "@/lib/drinks";
-import { kindTotals, memberStats, stopTotals } from "@/lib/stats";
+import { formatDrinkCount, formatKindCount, kindTotals, memberStats, stopTotals } from "@/lib/stats";
 import type { Drink, DrinkKind, Member, Stop } from "@/lib/types";
 import { Avatar, Badge, Card, Icon, SectionTitle } from "./ds";
 import { ChallengeRanking } from "./games/challenge-ranking"; // games: udfordringspoint
@@ -11,12 +11,15 @@ import { BestPub } from "./reviews/best-pub"; // pub-reviews
 import { RecapCard } from "./recap/recap-link"; // recap: Aftenens regnskab
 
 export function StatsTab({
+  code,
   members,
   drinks,
   stops,
   userId,
   now,
 }: {
+  // recap: turens aktuelle kode. Adressens kode kan være den gamle efter en ny kode.
+  code: string;
   members: Member[];
   drinks: Drink[];
   stops: Stop[];
@@ -34,7 +37,7 @@ export function StatsTab({
     return (
       <div className="flex flex-col gap-6 px-4 py-[18px]">
         {/* recap: Aftenens regnskab */}
-        <RecapCard />
+        <RecapCard code={code} />
         <Card variant="framed" className="text-center">
           <p className="pc-label mb-2 text-oxblood-700">Ingen drinks endnu</p>
           <p className="text-muted">Når I skriver drinks ind under Nu, kommer stillingen her.</p>
@@ -52,7 +55,7 @@ export function StatsTab({
   return (
     <div className="flex flex-col gap-6 px-4 py-[18px]">
       {/* recap: Aftenens regnskab */}
-      <RecapCard />
+      <RecapCard code={code} />
       <section>
         <SectionTitle eyebrow="Flest genstande" title="Hvem fører?" />
         <ol className="flex flex-col gap-2.5">
@@ -74,8 +77,8 @@ export function StatsTab({
                         {me && <span className="text-muted"> (dig)</span>}
                       </span>
                       <span className="block text-[13px] text-muted">
-                        {p.count} drinks · {p.water} vand
-                        {p.perHour !== null && ` · ${formatUnits(p.perHour)} i timen`}
+                        {formatDrinkCount(p.count)} · {p.water} vand
+                        {p.perHour !== null && ` · ${formatUnits(p.perHour)} gst. i timen`}
                       </span>
                     </span>
                     <span className="text-right">
@@ -90,16 +93,17 @@ export function StatsTab({
                   </div>
                   <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-cream-300">
                     <div
-                      className="pc-grow h-full rounded-full bg-gold-500 transition-[width] duration-500"
+                      className="pc-grow h-full rounded-full bg-gold-500"
                       style={{ width: `${(p.units / top) * 100}%` }}
                     />
                   </div>
-                  {Object.keys(p.byKind).length > 0 && (
+                  {/* Vandet står allerede i linjen ovenfor. */}
+                  {p.count > 0 && (
                     <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted">
-                      {DRINK_KINDS.filter((d) => p.byKind[d.kind]).map((d) => (
+                      {DRINK_KINDS.filter((d) => d.kind !== "water" && p.byKind[d.kind]).map((d) => (
                         <span key={d.kind} className="inline-flex items-center gap-1.5 whitespace-nowrap">
                           <Icon name={d.icon} size={14} color="var(--green-800)" />
-                          {p.byKind[d.kind]} {d.label.toLowerCase()}
+                          {formatKindCount(d.kind, p.byKind[d.kind] ?? 0)}
                         </span>
                       ))}
                     </div>
@@ -134,7 +138,7 @@ export function StatsTab({
                 </span>
                 <span className="h-5 flex-1 overflow-hidden rounded-[var(--radius-xs)] bg-cream-300">
                   <span
-                    className="pc-grow block h-full bg-green-800 transition-[width] duration-500"
+                    className="pc-grow block h-full bg-green-800"
                     style={{ width: `${(count / topKind) * 100}%` }}
                   />
                 </span>
@@ -156,11 +160,11 @@ export function StatsTab({
                 <span className="w-28 shrink-0 truncate text-sm font-semibold">{stop.name}</span>
                 <span className="h-5 flex-1 overflow-hidden rounded-[var(--radius-xs)] bg-cream-300">
                   <span
-                    className="pc-grow block h-full bg-gold-500 transition-[width] duration-500"
+                    className="pc-grow block h-full bg-gold-500"
                     style={{ width: `${(count / topStop) * 100}%` }}
                   />
                 </span>
-                <span className="w-16 text-right text-[13px] tabular-nums text-muted">
+                <span className="w-20 shrink-0 whitespace-nowrap text-right text-[13px] tabular-nums text-muted">
                   {count} · {formatUnits(units)} gst.
                 </span>
               </div>

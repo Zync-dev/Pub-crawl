@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { RecapGate, RecapLoading } from "@/components/recap/recap-gate";
+import { RecapGate } from "@/components/recap/recap-gate";
+import { RecapLoading } from "@/components/recap/recap-view";
 
 export const metadata: Metadata = {
   title: "Aftenens regnskab · Pub Crawl",

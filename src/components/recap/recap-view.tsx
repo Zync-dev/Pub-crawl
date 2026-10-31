@@ -12,7 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { memberTone } from "@/lib/colors";
 import { DRINK_BY_KIND, formatUnits } from "@/lib/drinks";
 import { formatDistance } from "@/lib/geo";
@@ -22,11 +22,10 @@ import {
   formatDuration,
   formatLeg,
   formatPoints,
-  formatRecapDate,
+  formatRecapDay,
   formatTimes,
   joinAll,
   recapFileName,
-  recapStatusLabel,
   shareCard,
   type Recap,
 } from "@/lib/recap";
@@ -35,6 +34,7 @@ import type { Photo } from "@/lib/reviews-types";
 import { formatRoundCount } from "@/lib/rounds";
 import type { Crawl, Member } from "@/lib/types";
 import { useNow } from "@/lib/use-crawl";
+import { useDrinkOutbox } from "@/lib/use-drink-outbox";
 import { useRecapData } from "@/lib/use-recap-data";
 import { formatStars, useReviews } from "@/lib/use-reviews";
 import { useAsk } from "../ask";
@@ -48,7 +48,46 @@ export function RecapView({ initial, userId }: { initial: Crawl; userId: string 
   const reviews = useReviews(initial.id);
   const now = useNow(30_000);
   const ask = useAsk();
-  const { crawl } = data;
+  const { crawl, refetch } = data;
+
+  // Drinks i telefonens offline-kø tæller med her og sendes også herfra, for turens side er skjult
+  // (eller slet ikke åbnet), mens man står på regnskabet. Når noget er sendt, hentes regnskabet igen.
+  const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refetchSoon = useCallback(() => {
+    if (refetchTimer.current) clearTimeout(refetchTimer.current);
+    refetchTimer.current = setTimeout(() => void refetch(), 400);
+  }, [refetch]);
+  useEffect(
+    () => () => {
+      if (refetchTimer.current) clearTimeout(refetchTimer.current);
+    },
+    [],
+  );
+  const outbox = useDrinkOutbox(initial.id, userId, data.drinks, refetchSoon, () =>
+    ask.toast("En drink kunne ikke gemmes.", "danger"),
+  );
+
+  // Ny kode, mens regnskabet er åbent: ret adressen, så et genindlæs stadig finder turen.
+  const shownCode = useRef(initial.code);
+  useEffect(() => {
+    const previous = shownCode.current;
+    shownCode.current = crawl.code;
+    if (previous === crawl.code) return;
+    if (window.location.pathname.toUpperCase() === `/T/${previous.toUpperCase()}/REGNSKAB`) {
+      window.history.replaceState(null, "", `/t/${crawl.code}/regnskab`);
+    }
+  }, [crawl.code]);
+
+  const [retrying, setRetrying] = useState(false);
+  async function retry() {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      if (!(await refetch())) ask.toast("Stadig ingen forbindelse. Prøv igen om lidt.", "danger");
+    } finally {
+      setRetrying(false);
+    }
+  }
 
   const recap = useMemo(
     () =>
@@ -56,7 +95,7 @@ export function RecapView({ initial, userId }: { initial: Crawl; userId: string 
         crawl,
         members: data.members,
         stops: data.stops,
-        drinks: data.drinks,
+        drinks: outbox.drinks,
         rounds: data.rounds,
         challenges: data.challenges,
         votes: data.votes,
@@ -66,7 +105,7 @@ export function RecapView({ initial, userId }: { initial: Crawl; userId: string 
         rollCallAnswers: data.rollCallAnswers,
         now,
       }),
-    [crawl, data.members, data.stops, data.drinks, data.rounds, data.challenges, data.votes, data.rollCalls, data.rollCallAnswers, reviews.ratings, reviews.photos, now],
+    [crawl, data.members, data.stops, outbox.drinks, data.rounds, data.challenges, data.votes, data.rollCalls, data.rollCallAnswers, reviews.ratings, reviews.photos, now],
   );
 
   const card = useMemo(() => shareCard(recap), [recap]);
@@ -115,34 +154,21 @@ export function RecapView({ initial, userId }: { initial: Crawl; userId: string 
     </Link>
   );
 
-  const status = recapStatusLabel(recap.status);
-  const header = (
-    <Header
-      eyebrow={`${formatRecapDate(recap.date)} · ${status}`}
-      title="Aftenens regnskab"
-      left={back}
-    />
-  );
+  // Uden data endnu er datoen og status gæt (turens oprettelse, "Ikke begyndt"), så de venter.
+  if (!data.loaded && !data.failed) return <RecapLoading left={back} />;
 
   if (!data.loaded) {
     return (
       <div className="flex h-dvh flex-col overflow-hidden bg-cream-200">
-        {header}
+        <Header title="Aftenens regnskab" left={back} />
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-green-800">
-          {data.failed ? (
-            <Card variant="framed" className="mx-4 flex flex-col gap-3 text-center">
-              <p className="pc-label text-oxblood-700">Ingen forbindelse</p>
-              <p className="text-muted">Regnskabet kunne ikke hentes.</p>
-              <Button variant="primary" onClick={() => void data.refetch()}>
-                Prøv igen
-              </Button>
-            </Card>
-          ) : (
-            <>
-              <Spinner size={28} label="Gør regnskabet op" />
-              <p className="pc-eyebrow text-muted">Gør regnskabet op</p>
-            </>
-          )}
+          <Card variant="framed" className="mx-4 flex flex-col gap-3 text-center">
+            <p className="pc-label text-oxblood-700">Ingen forbindelse</p>
+            <p className="text-muted">Regnskabet kunne ikke hentes.</p>
+            <Button variant="primary" loading={retrying} onClick={() => void retry()}>
+              Prøv igen
+            </Button>
+          </Card>
         </div>
       </div>
     );
@@ -151,19 +177,24 @@ export function RecapView({ initial, userId }: { initial: Crawl; userId: string 
   const nothing = recap.status === "empty" && recap.totals.drinks + recap.totals.water === 0;
   const stopName = (id: string | null) => data.stops.find((s) => s.id === id)?.name;
 
+  // Status står i heroen. Sidehovedet har kun datoen, så den ikke klippes af på en telefon.
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-cream-200">
-      {header}
+      <Header eyebrow={formatRecapDay(recap.date)} title="Aftenens regnskab" left={back} />
       <main className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-xl flex-col gap-6 px-4 pb-[max(28px,env(safe-area-inset-bottom))] pt-[18px]">
-          <Hero recap={recap} sharing={sharing} onShare={() => void share()} />
-
           {nothing ? (
+            // Intet at dele endnu: ét kort og vejen tilbage, ingen delknapper med nuller.
             <Card variant="framed" className="pc-enter text-center">
-              <p className="pc-label mb-2 text-oxblood-700">Intet at gøre op endnu</p>
+              <p className="pc-label mb-2 text-oxblood-700">Aftenen venter</p>
+              <p className="mb-1 font-serif text-[24px] italic leading-tight">{recap.name}</p>
               <p className="text-muted">Tjek ind på første pub, så begynder regnskabet.</p>
             </Card>
           ) : (
+            <Hero recap={recap} sharing={sharing} onShare={() => void share()} />
+          )}
+
+          {nothing ? null : (
             <>
               <Standings recap={recap} userId={userId} />
               <RouteSection recap={recap} />
@@ -177,9 +208,11 @@ export function RecapView({ initial, userId }: { initial: Crawl; userId: string 
           )}
 
           <div className="flex flex-col gap-2.5">
-            <Button variant="gold" size="lg" icon={Share2} fullWidth loading={sharing} onClick={() => void share()}>
-              {sharing ? "Gør billedet klar" : "Del regnskabet"}
-            </Button>
+            {!nothing && (
+              <Button variant="gold" size="lg" icon={Share2} fullWidth loading={sharing} onClick={() => void share()}>
+                {sharing ? "Gør billedet klar" : "Del regnskabet"}
+              </Button>
+            )}
             <Link href={`/t/${encodeURIComponent(crawl.code)}`} className="pc-btn pc-btn--ghost pc-btn--full">
               <Icon name={ChevronLeft} size={18} />
               Tilbage til turen
@@ -222,10 +255,14 @@ function Hero({ recap, sharing, onShare }: { recap: Recap; sharing: boolean; onS
         </p>
         <p className="mt-2 font-serif text-[34px] italic leading-[1.05]">{recap.name}</p>
       </div>
-      <div className="grid grid-cols-4 gap-2 border-t pt-4" style={{ borderColor: "rgba(201,162,74,.4)" }}>
+      {/* To og to på en telefon: fire kolonner er for smalle til "Genstande" og "1,2 km". */}
+      <div
+        className="grid grid-cols-2 gap-x-2 gap-y-4 border-t pt-4 min-[440px]:grid-cols-4"
+        style={{ borderColor: "rgba(201,162,74,.4)" }}
+      >
         {figures.map((f) => (
           <div key={f.label} className="min-w-0 text-center">
-            <p className="truncate font-serif text-[24px] leading-none tabular-nums">{f.value}</p>
+            <p className="whitespace-nowrap font-serif text-[24px] leading-none tabular-nums">{f.value}</p>
             <p className="pc-label mt-2 truncate" style={{ color: "var(--gold-300)" }}>
               {f.label}
             </p>
@@ -283,7 +320,7 @@ function RouteSection({ recap }: { recap: Recap }) {
           <li key={leg.stop.id} className="pc-enter" style={{ animationDelay: `${Math.min(i, 6) * 40}ms` }}>
             <StopCard
               number={leg.order}
-              total={recap.route.length}
+              total={recap.plannedStops}
               name={leg.stop.name}
               status={leg.here ? "current" : "done"}
               note={
@@ -299,11 +336,13 @@ function RouteSection({ recap }: { recap: Recap }) {
           </li>
         ))}
       </ol>
-      <p className="mt-3 flex items-center gap-2 text-sm text-muted">
-        <Icon name={Footprints} size={16} color="var(--green-800)" />
-        {formatDistance(recap.walkedMeters)} gået i lige linjer mellem pubberne.
-      </p>
-      {estimated && <p className="mt-1 text-[13px] text-muted">ca. = regnet ud fra gåturen til næste pub.</p>}
+      {recap.walkedMeters > 0 && (
+        <p className="mt-3 flex items-center gap-2 text-sm text-muted">
+          <Icon name={Footprints} size={16} color="var(--green-800)" />
+          {formatDistance(recap.walkedMeters)} gået i lige linjer mellem pubberne.
+        </p>
+      )}
+      {estimated && <p className="mt-1 text-[13px] text-muted">ca. = anslået, fordi ingen trykkede Videre.</p>}
     </section>
   );
 }
@@ -369,7 +408,7 @@ function BestPubSection({ recap }: { recap: Recap }) {
                 <span className="w-5 text-center font-serif text-[18px] text-muted">{i + 2}</span>
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold">{p.stop.name}</span>
                 <span className="text-[13px] tabular-nums text-muted">
-                  {formatStars(p.average)} · {p.count}
+                  {formatStars(p.average)} · {p.count === 1 ? "1 stemme" : `${p.count} stemmer`}
                 </span>
               </li>
             ))}
@@ -430,12 +469,13 @@ function ChallengesSection({ recap }: { recap: Recap }) {
         </Card>
         {mostVoted && (
           <Card variant="inverse" className="pc-on-dark flex flex-col gap-2">
-            <p className="pc-eyebrow" style={{ color: "var(--gold-500)" }}>
-              Aftenens mest stemte udfordring
+            <p className="pc-label" style={{ color: "var(--gold-500)" }}>
+              Mest stemt
             </p>
             <p className="font-serif text-[22px] leading-[1.15]">{mostVoted.challenge.text}</p>
             <p className="text-[13px]" style={{ color: "rgba(251,245,230,.75)" }}>
-              {mostVoted.votes} stemmer · {mostVoted.done} klaret · {mostVoted.completed ? "Den tæller" : "Den tæller ikke"}
+              {mostVoted.votes === 1 ? "1 stemme" : `${mostVoted.votes} stemmer`} · {mostVoted.done} sagde klaret ·{" "}
+              {mostVoted.completed ? "den tæller" : "den tæller ikke"}
             </p>
           </Card>
         )}
@@ -499,13 +539,20 @@ function PhotosSection({
   );
 }
 
+// "3 opråb · alle svarede 2 gange", "2 opråb · alle svarede hver gang".
+function rollCallEyebrow(count: number, complete: number) {
+  const calls = count === 1 ? "1 opråb" : `${count} opråb`;
+  if (!complete) return calls;
+  return `${calls} · alle svarede ${complete === count ? "hver gang" : formatTimes(complete)}`;
+}
+
 function RollCallSection({ recap }: { recap: Recap }) {
   const r = recap.rollCalls;
   if (!r.count) return null;
   const names = (members: Member[]) => joinAll(members.map((m) => m.name));
   return (
     <section>
-      <SectionTitle eyebrow={`${r.count === 1 ? "1 opråb" : `${r.count} opråb`} · ${r.complete} med alle`} title="Er alle med?" />
+      <SectionTitle eyebrow={rollCallEyebrow(r.count, r.complete)} title="Er alle med?" />
       <Card className="flex flex-col gap-3">
         <div className="flex items-center gap-3">
           <span
@@ -543,5 +590,18 @@ function RollCallSection({ recap }: { recap: Recap }) {
         )}
       </Card>
     </section>
+  );
+}
+
+// Den samme ventevisning hele vejen, fra siden indlæses, til regnskabet er gjort op.
+export function RecapLoading({ left }: { left?: ReactNode }) {
+  return (
+    <div className="flex h-dvh flex-col overflow-hidden bg-cream-200">
+      <Header title="Aftenens regnskab" left={left} />
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-green-800">
+        <Spinner size={28} label="Gør regnskabet op" />
+        <p className="pc-eyebrow text-muted">Gør regnskabet op</p>
+      </div>
+    </div>
   );
 }

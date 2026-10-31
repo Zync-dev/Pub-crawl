@@ -6,6 +6,7 @@ import { formatCopenhagenTime } from "./live-link";
 import type { Photo, StopRating } from "./reviews-types";
 import { lastIn, type RollCall, type RollCallAnswer } from "./roll-call";
 import { formatRoundCount, roundStandings, type BuyerCount, type Round } from "./rounds";
+import { compareStanding, roundUnits } from "./stats";
 import type { Crawl, Drink, DrinkKind, Member, Stop } from "./types";
 
 // Aftenens regnskab. Alt regnes ud her i rene funktioner uden React og database,
@@ -41,19 +42,48 @@ const ms = (iso: string | null | undefined) => {
 
 const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, "da");
 
+// Så længe uden nyt (check-in, afgang eller drink), så er aftenen slut, også selv om ingen trykkede Videre.
+export const EVENING_OVER_MS = 3 * 60 * 60_000;
+
+// Det seneste, turen skrev ned: en check-in, en afgang eller en drink.
+export function lastActivity(stops: RecapStop[], drinks: Drink[]): number | null {
+  let last: number | null = null;
+  for (const t of [
+    ...stops.flatMap((s) => [ms(s.visited_at), ms(s.left_at)]),
+    ...drinks.map((d) => ms(d.created_at)),
+  ]) {
+    if (t !== null && (last === null || t > last)) last = t;
+  }
+  return last;
+}
+
+// Er aftenen slut? Først når nogen har tjekket ind, og der er gået længe nok uden nyt.
+export function eveningOver(stops: RecapStop[], drinks: Drink[], now: number) {
+  if (!stops.some((s) => ms(s.visited_at) !== null)) return false;
+  const last = lastActivity(stops, drinks);
+  return last !== null && now - last >= EVENING_OVER_MS;
+}
+
 // Er ruten gået, er I i gang, eller er I slet ikke begyndt?
-export function recapStatus(stops: Stop[], currentStopId: string | null): RecapStatus {
+// over: aftenen er slut, selv om ingen trykkede Videre eller fik de sidste pubs med.
+export function recapStatus(stops: Stop[], currentStopId: string | null, over = false): RecapStatus {
   if (!stops.some((s) => s.visited_at)) return currentStopId ? "live" : "empty";
+  if (over) return "done";
   if (currentStopId) return "live";
   return stops.every((s) => s.visited_at) ? "done" : "live";
 }
 
+// Efter sidste drink på en pub blev I typisk lidt endnu.
+const AFTER_LAST_DRINK_MS = 30 * 60_000;
+
 // Ruten, som den blev gået: ankomst, afgang og hvor længe I blev.
+// over: aftenen er slut, så pubben, I stod på, lukkes med en anslået afgang.
 export function recapRoute(
   stops: RecapStop[],
   drinks: Drink[],
   currentStopId: string | null,
   now: number,
+  over = false,
 ): RecapLeg[] {
   const visited = stops
     .map((stop) => ({ stop, at: ms(stop.visited_at) }))
@@ -64,7 +94,8 @@ export function recapRoute(
     const prev = visited[i - 1];
     const next = visited[i + 1];
     const walkMeters = prev ? distanceMeters(prev.stop, stop) : 0;
-    const here = stop.id === currentStopId;
+    const here = stop.id === currentStopId && !over;
+    const drinksHere = drinks.filter((d) => d.stop_id === stop.id);
     let leftAt: number | null = null;
     let leftEstimated = false;
     if (!here) {
@@ -78,8 +109,12 @@ export function recapRoute(
         leftAt = Math.max(at, next.at - walk);
         leftEstimated = true;
       } else {
-        // Sidste pub uden afgangstid: den planlagte tid, men aldrig ud i fremtiden.
-        leftAt = Math.max(at, Math.min(now, at + stop.minutes * 60_000));
+        // Sidste pub uden afgangstid: den planlagte tid eller en halv time efter sidste drink,
+        // men aldrig ud i fremtiden.
+        const lastDrink = Math.max(at, ...drinksHere.map((d) => ms(d.created_at) ?? at));
+        const planned = at + stop.minutes * 60_000;
+        const end = drinksHere.length ? Math.max(planned, lastDrink + AFTER_LAST_DRINK_MS) : planned;
+        leftAt = Math.max(at, Math.min(now, end));
         leftEstimated = true;
       }
     }
@@ -93,7 +128,7 @@ export function recapRoute(
       stayMs: Math.max(0, end - at),
       here,
       walkMeters,
-      drinks: drinks.filter((d) => d.stop_id === stop.id && d.kind !== "water").length,
+      drinks: drinksHere.filter((d) => d.kind !== "water").length,
     };
   });
 }
@@ -126,10 +161,11 @@ export function topDrinkers(members: Member[], drinks: Drink[], limit = 3): Drin
     row.units += Number(d.units) || 0;
     if (d.kind !== "water") row.drinks += 1;
   }
+  // Samme afrunding og rækkefølge som Stillingen, så de altid er enige om, hvem der fører.
   return [...byId.values()]
-    .map((r) => ({ ...r, units: Math.round(r.units * 10) / 10 }))
+    .map((r) => ({ ...r, units: roundUnits(r.units) }))
     .filter((r) => r.units > 0)
-    .sort((a, b) => b.units - a.units || b.drinks - a.drinks || byName(a.member, b.member))
+    .sort(compareStanding)
     .slice(0, limit);
 }
 
@@ -298,6 +334,12 @@ export function formatRecapDate(iso: string) {
   return `${parts.weekday} ${parts.day}. ${parts.month} ${parts.year}`;
 }
 
+// "fredag 6. november", kort nok til sidehovedet på en telefon.
+export function formatRecapDay(iso: string) {
+  const parts = Object.fromEntries(dateParts.formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
+  return `${parts.weekday} ${parts.day}. ${parts.month}`;
+}
+
 // "45 min.", "1 t. 20 min.", "2 t."
 export function formatDuration(durationMs: number) {
   const minutes = Math.max(1, Math.round(durationMs / 60_000));
@@ -357,11 +399,12 @@ export function buildRecap(input: RecapInput): Recap {
   const memberIds = new Set(input.members.map((m) => m.user_id));
   // Drinks og billeder fra folk, der er gået hjem, er allerede væk i databasen. Her for en sikkerheds skyld.
   const drinks = input.drinks.filter((d) => memberIds.has(d.user_id));
-  const route = recapRoute(input.stops, drinks, input.crawl.current_stop_id, input.now);
+  const over = eveningOver(input.stops, drinks, input.now);
+  const route = recapRoute(input.stops, drinks, input.crawl.current_stop_id, input.now, over);
   return {
     name: input.crawl.name,
     date: recapDate(input.crawl, input.stops),
-    status: recapStatus(input.stops, input.crawl.current_stop_id),
+    status: recapStatus(input.stops, input.crawl.current_stop_id, over),
     route,
     plannedStops: input.stops.length,
     walkedMeters: walkedMeters(route),
@@ -404,9 +447,13 @@ export type ShareCard = {
   footer: string;
 };
 
-// Indholdet af delebilledet. Højst seks linjer, de vigtigste først.
-export function shareCard(recap: Recap, maxLines = 6): ShareCard {
-  const lines: ShareLine[] = [];
+// Så mange højdepunkter er der plads til på delebilledet over ruten.
+export const SHARE_LINES = 5;
+
+// Indholdet af delebilledet. Er der flere højdepunkter end plads, ryger billederne først,
+// så det mest bestilte (tallene står allerede øverst), så de nederste.
+export function shareCard(recap: Recap, maxLines = SHARE_LINES): ShareCard {
+  const lines: (ShareLine & { spare?: number })[] = [];
   if (recap.top.length) {
     lines.push({
       label: "Stillingen",
@@ -421,7 +468,7 @@ export function shareCard(recap: Recap, maxLines = 6): ShareCard {
     });
   }
   if (recap.popular) {
-    lines.push({ label: "Mest bestilt", value: `${recap.popular.label} · ${recap.popular.count} stk.` });
+    lines.push({ label: "Mest bestilt", value: `${recap.popular.label} · ${recap.popular.count} stk.`, spare: 1 });
   }
   if (recap.challenges.leaders.length) {
     const l = recap.challenges.leaders;
@@ -430,9 +477,13 @@ export function shareCard(recap: Recap, maxLines = 6): ShareCard {
       value: `${joinAll(l.map((s) => s.member.name))} · ${formatPoints(l[0].points)}`,
     });
   }
-  const topBuyer = recap.rounds.people[0];
-  if (recap.rounds.total > 0 && topBuyer) {
-    lines.push({ label: "Flest omgange", value: `${topBuyer.member.name} · ${formatRoundCount(topBuyer.count)}` });
+  const topRounds = recap.rounds.people[0]?.count ?? 0;
+  if (recap.rounds.total > 0 && topRounds > 0) {
+    const buyers = recap.rounds.people.filter((p) => p.count === topRounds);
+    lines.push({
+      label: "Flest omgange",
+      value: `${joinAll(buyers.map((p) => p.member.name))} · ${formatRoundCount(topRounds)}`,
+    });
   }
   if (recap.rollCalls.mostOftenLast) {
     const l = recap.rollCalls.mostOftenLast;
@@ -441,9 +492,15 @@ export function shareCard(recap: Recap, maxLines = 6): ShareCard {
       value: `${joinAll(l.members.map((m) => m.name))} · ${formatTimes(l.count)}`,
     });
   }
-  if (recap.photos.count > 0 && lines.length < maxLines) {
-    lines.push({ label: "Billeder", value: recap.photos.count === 1 ? "1 billede" : `${recap.photos.count} billeder` });
+  if (recap.photos.count > 0) {
+    lines.push({ label: "Billeder", value: recap.photos.count === 1 ? "1 billede" : `${recap.photos.count} billeder`, spare: 2 });
   }
+  const kept = lines
+    .map((line, i) => ({ line, i, spare: line.spare ?? 0 }))
+    .sort((a, b) => a.spare - b.spare || a.i - b.i)
+    .slice(0, Math.max(0, maxLines))
+    .sort((a, b) => a.i - b.i)
+    .map(({ line: { label, value } }) => ({ label, value }));
 
   const visited = recap.route.length;
   return {
@@ -456,7 +513,7 @@ export function shareCard(recap: Recap, maxLines = 6): ShareCard {
       { value: recap.plannedStops > visited ? `${visited}/${recap.plannedStops}` : String(visited), label: "Pubs" },
       { value: formatDistance(recap.walkedMeters), label: "Gået" },
     ],
-    lines: lines.slice(0, maxLines),
+    lines: kept,
     route: recap.route.map((l) => l.stop.name).join("  ·  "),
     footer: "God øl · godt selskab",
   };

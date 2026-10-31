@@ -1,4 +1,34 @@
+import { DRINK_BY_KIND } from "./drinks";
 import type { Drink, DrinkKind, Member, Stop } from "./types";
+
+// Genstande med én decimal. Uden afrunding afgør en float-fejl (1,2 + 1,2 + 1,2 + 1), hvem der fører.
+export const roundUnits = (units: number) => Math.round(units * 10) / 10;
+
+// Stillingen: flest genstande, så flest drinks, så navnet. Bruges også af regnskabet.
+export function compareStanding(
+  a: { member: Member; units: number; drinks: number },
+  b: { member: Member; units: number; drinks: number },
+) {
+  return b.units - a.units || b.drinks - a.drinks || a.member.name.localeCompare(b.member.name, "da");
+}
+
+// "1 drink", "2 drinks", "3 shots", "2 glas vin", "4 øl".
+const KIND_COUNT: Partial<Record<DrinkKind, [string, string]>> = {
+  wine: ["glas vin", "glas vin"],
+  drink: ["drink", "drinks"],
+  shot: ["shot", "shots"],
+  water: ["glas vand", "glas vand"],
+};
+
+export function formatKindCount(kind: DrinkKind, n: number) {
+  const label = DRINK_BY_KIND[kind].label.toLowerCase();
+  const [one, many] = KIND_COUNT[kind] ?? [label, label];
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+export function formatDrinkCount(n: number) {
+  return formatKindCount("drink", n);
+}
 
 export type MemberStats = {
   member: Member;
@@ -24,6 +54,7 @@ export function memberStats(members: Member[], drinks: Drink[], now: number) {
       ? Math.min(...alcoholic.map((d) => new Date(d.created_at).getTime()))
       : null;
     const hours = first ? (now - first) / 3_600_000 : 0;
+    units = roundUnits(units);
     return {
       member,
       units,
@@ -34,7 +65,7 @@ export function memberStats(members: Member[], drinks: Drink[], now: number) {
       perHour: first && hours >= 0.5 ? units / hours : null,
     };
   });
-  return stats.sort((a, b) => b.units - a.units || a.member.name.localeCompare(b.member.name));
+  return stats.sort((a, b) => compareStanding({ ...a, drinks: a.count }, { ...b, drinks: b.count }));
 }
 
 export function kindTotals(drinks: Drink[]) {

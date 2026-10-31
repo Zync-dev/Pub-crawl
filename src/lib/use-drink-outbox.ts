@@ -38,12 +38,20 @@ const SLOW_MS = 1_500;
 const SETTLE_MS = 30_000;
 
 function load(key: string): OutboxEntry[] {
+  return stored(key) ?? [];
+}
+
+// null, når localStorage ikke kan læses. Så stoler vi på køen i hukommelsen.
+function stored(key: string): OutboxEntry[] | null {
   try {
     return parseOutbox(localStorage.getItem(key));
   } catch {
-    return [];
+    return null;
   }
 }
+
+const sameQueue = (a: OutboxEntry[], b: OutboxEntry[]) =>
+  a.length === b.length && a.every((e, i) => entryKey(e) === entryKey(b[i]));
 
 function save(key: string, entries: OutboxEntry[]) {
   try {
@@ -199,15 +207,25 @@ export function useDrinkOutbox(
     const onVisible = () => {
       if (document.visibilityState === "visible") kick();
     };
+    // Activity: turen og regnskabet har hver sin kø i hukommelsen, men deler localStorage.
+    // Har den anden side sendt køen, mens denne var skjult, tager vi det gemte, før vi sender.
+    const resync = () => {
+      if (flushing.current) return;
+      const saved = stored(key);
+      if (saved && !sameQueue(saved, queue.current)) commit(saved);
+    };
     window.addEventListener("online", kick);
     document.addEventListener("visibilitychange", onVisible);
-    const first = setTimeout(kick, 0);
+    const first = setTimeout(() => {
+      resync();
+      kick();
+    }, 0);
     return () => {
       clearTimeout(first);
       window.removeEventListener("online", kick);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [flush]);
+  }, [flush, key, commit]);
 
   const pending = entries.length > 0;
   useEffect(() => {

@@ -62,7 +62,7 @@ export function NowTab({
           actions={actions}
         />
       ) : (
-        <OnTheWay stops={stops} nextStop={nextStop} actions={actions} onOpenRoute={onOpenRoute} />
+        <OnTheWay code={crawl.code} stops={stops} nextStop={nextStop} actions={actions} onOpenRoute={onOpenRoute} />
       )}
       {/* Er alle med? (rollcall): "Sidst med" og knappen til at starte et opråb. */}
       <RollCallStarter userId={userId} fromStopId={currentStop?.id ?? null} />
@@ -209,11 +209,14 @@ function AtPub({
 }
 
 function OnTheWay({
+  code,
   stops,
   nextStop,
   actions,
   onOpenRoute,
 }: {
+  // recap: turens aktuelle kode til regnskabslinket.
+  code: string;
   stops: Stop[];
   nextStop: Stop | null;
   actions: CrawlActions;
@@ -238,7 +241,7 @@ function OnTheWay({
         <p className="pc-label text-oxblood-700">Sidste omgang er drukket</p>
         <p className="font-serif text-[24px] leading-tight">Ruten er gået. Godt gået.</p>
         {/* recap: Aftenens regnskab */}
-        <RecapButton />
+        <RecapButton code={code} />
         <Button variant="secondary" icon="plus" fullWidth onClick={onOpenRoute}>
           Én pub mere
         </Button>

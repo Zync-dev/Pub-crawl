@@ -1,48 +1,75 @@
 "use client";
 
-import { ScrollText } from "lucide-react";
+import { ChevronLeft, ScrollText } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ensureUser, errorText, getSupabase, supabaseConfigured } from "@/lib/supabase";
 import type { Crawl } from "@/lib/types";
 import { AskProvider } from "../ask";
-import { Button, Icon, Spinner } from "../ds";
+import { Button, Icon } from "../ds";
 import { HomeLink, StatusScreen } from "../status-screen";
-import { RecapView } from "./recap-view";
+import { RecapLoading, RecapView } from "./recap-view";
 
 type State =
   | { step: "loading" }
-  | { step: "error"; message: string }
+  // again: et nyt forsøg fejlede også.
+  | { step: "error"; message: string; again: boolean }
   | { step: "outside" }
+  | { step: "missing" }
   | { step: "ready"; crawl: Crawl; userId: string };
 
 // Regnskabet er kun for holdet. Er man ikke med, sendes man til invitationen på /t/[code].
 export function RecapGate({ code }: { code: string }) {
   const [state, setState] = useState<State>({ step: "loading" });
+  const [retrying, setRetrying] = useState(false);
+  // Activity kører effekten igen, når den bevarede side vises. Er regnskabet først hentet,
+  // klarer RecapView selv genhentningen og beholder det, den har, hvis nettet er væk.
+  const ready = useRef(false);
 
   const load = useCallback(async () => {
     try {
       const user = await ensureUser();
-      const { data: crawl, error } = await getSupabase()
+      const supabase = getSupabase();
+      const { data: crawl, error } = await supabase
         .from("crawls")
         .select("*")
         .eq("code", code)
         .maybeSingle<Crawl>();
       if (error) throw error;
-      setState(crawl ? { step: "ready", crawl, userId: user.id } : { step: "outside" });
+      if (crawl) {
+        ready.current = true;
+        setState({ step: "ready", crawl, userId: user.id });
+        return;
+      }
+      // Ikke med på holdet, eller findes koden slet ikke længere (fx efter en ny kode)?
+      const { data: preview, error: previewError } = await supabase
+        .rpc("crawl_preview", { p_code: code })
+        .maybeSingle<{ name: string }>();
+      if (previewError) throw previewError;
+      setState({ step: preview ? "outside" : "missing" });
     } catch (err) {
-      setState({ step: "error", message: errorText(err) });
+      setState((prev) => ({ step: "error", message: errorText(err), again: prev.step === "error" }));
     }
   }, [code]);
 
   useEffect(() => {
+    if (ready.current) return;
     if (!supabaseConfigured()) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setState({ step: "error", message: "Supabase er ikke sat op endnu." });
+      setState({ step: "error", message: "Supabase er ikke sat op endnu.", again: false });
       return;
     }
     void load();
   }, [load]);
+
+  async function retry() {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      await load();
+    } finally {
+      setRetrying(false);
+    }
+  }
 
   if (state.step === "ready") {
     return (
@@ -61,14 +88,27 @@ export function RecapGate({ code }: { code: string }) {
         title="Regnskabet kom ikke frem"
         actions={
           <>
-            <Button variant="primary" size="lg" fullWidth onClick={() => void load()}>
+            <Button variant="primary" size="lg" fullWidth loading={retrying} onClick={() => void retry()}>
               Prøv igen
             </Button>
-            <HomeLink />
+            <Link href={`/t/${encodeURIComponent(code)}`} className="pc-btn pc-btn--secondary pc-btn--lg pc-btn--full">
+              <Icon name={ChevronLeft} size={20} />
+              Tilbage til turen
+            </Link>
           </>
         }
       >
+        {state.again && !retrying && <p className="pc-label mb-2 text-oxblood-700">Stadig intet svar</p>}
         <p className="text-oxblood-500">{state.message}</p>
+      </StatusScreen>
+    );
+  }
+
+  if (state.step === "missing") {
+    return (
+      <StatusScreen eyebrow="Aftenens regnskab" title="Ingen tur med den kode" actions={<HomeLink variant="primary" />}>
+        <p>Der findes ingen tur med koden {code}.</p>
+        <p className="mt-2 text-muted">Har arrangøren lavet en ny kode? Find turen på forsiden.</p>
       </StatusScreen>
     );
   }
@@ -89,14 +129,5 @@ export function RecapGate({ code }: { code: string }) {
     >
       <p>Hop med på turen med koden {code}, så kan du se regnskabet.</p>
     </StatusScreen>
-  );
-}
-
-export function RecapLoading() {
-  return (
-    <main className="flex min-h-dvh flex-1 flex-col items-center justify-center gap-3 bg-green-800 text-gold-500">
-      <Spinner size={26} label="Gør regnskabet op" />
-      <p className="pc-eyebrow text-gold-300">Gør regnskabet op</p>
-    </main>
   );
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { kindTotals, memberStats, stopTotals } from "./stats";
+import { topDrinkers } from "./recap";
+import { formatDrinkCount, formatKindCount, kindTotals, memberStats, stopTotals } from "./stats";
 import { drink, member, stop } from "./test-fixtures";
 
 const T0 = Date.parse("2026-11-06T19:00:00.000Z");
@@ -66,5 +67,47 @@ describe("kindTotals og stopTotals", () => {
       ["s1", 2, 2],
       ["s2", 1, 1],
     ]);
+  });
+});
+
+describe("Stillingen og regnskabet er enige", () => {
+  const lukas = member("a", "Lukas");
+  const mikkel = member("b", "Mikkel");
+
+  it("runder genstande, så rækkefølgen af drinks ikke afgør, hvem der fører", () => {
+    // 1,2 + 1,2 + 1,2 + 1 = 4.6, men 1 + 1,2 + 1,2 + 1,2 = 4.6000000000000005 som float.
+    const drinks = [
+      drink("a", "jbeer", 1.2, at(0)),
+      drink("a", "jbeer", 1.2, at(1)),
+      drink("a", "jbeer", 1.2, at(2)),
+      drink("a", "beer", 1, at(3)),
+      drink("b", "beer", 1, at(0)),
+      drink("b", "jbeer", 1.2, at(1)),
+      drink("b", "jbeer", 1.2, at(2)),
+      drink("b", "jbeer", 1.2, at(3)),
+    ];
+    const stats = memberStats([mikkel, lukas], drinks, T0);
+    expect(stats.map((s) => s.units)).toEqual([4.6, 4.6]);
+    expect(stats[0].member.name).toBe("Lukas");
+    expect(topDrinkers([mikkel, lukas], drinks, 3)[0].member.name).toBe("Lukas");
+  });
+
+  it("lader flest drinks vinde ved samme antal genstande og sorterer navne på dansk", () => {
+    const drinks = [drink("a", "draft", 1.5, at(0)), drink("b", "beer", 1, at(0)), drink("b", "water", 0, at(1)), drink("b", "beer", 0.5, at(2))];
+    expect(memberStats([lukas, mikkel], drinks, T0)[0].member.name).toBe("Mikkel");
+    const names = memberStats([member("x", "Åse"), member("y", "Zoe"), member("z", "Øjvind"), member("w", "Anna")], [], T0).map((s) => s.member.name);
+    expect(names).toEqual(["Anna", "Zoe", "Øjvind", "Åse"]);
+  });
+});
+
+describe("formatKindCount", () => {
+  it("bøjer menuens navne", () => {
+    expect(formatKindCount("drink", 1)).toBe("1 drink");
+    expect(formatKindCount("drink", 2)).toBe("2 drinks");
+    expect(formatKindCount("shot", 3)).toBe("3 shots");
+    expect(formatKindCount("wine", 2)).toBe("2 glas vin");
+    expect(formatKindCount("beer", 4)).toBe("4 øl");
+    expect(formatKindCount("jbeer", 1)).toBe("1 julebryg");
+    expect(formatDrinkCount(1)).toBe("1 drink");
   });
 });

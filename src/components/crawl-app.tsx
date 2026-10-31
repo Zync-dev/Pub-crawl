@@ -363,7 +363,7 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
             )}
             {tab === "stats" && (
               <div key="stats" className="pc-enter">
-                <StatsTab members={members} drinks={drinks} stops={stops} userId={userId} now={slowNow} />
+                <StatsTab code={crawl.code} members={members} drinks={drinks} stops={stops} userId={userId} now={slowNow} />
               </div>
             )}
             {tab === "crew" && (

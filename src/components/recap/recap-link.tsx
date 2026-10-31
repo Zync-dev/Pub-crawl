@@ -2,14 +2,16 @@
 
 import { ChevronRight, ScrollText } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Icon } from "../ds";
 
 // Aftenens regnskab ligger på /t/[code]/regnskab. Koden kommer helst fra turen selv,
-// ellers fra adressen (Stillingen får ikke turen med).
+// ellers fra adressen. useParams bruges ikke: efter en ny kode retter use-arranger adressen
+// med replaceState, og så følger usePathname med, men useParams giver stadig den gamle kode.
 function useRecapHref(code?: string) {
-  const params = useParams<{ code?: string }>();
-  const value = (code ?? params?.code ?? "").toUpperCase();
+  const pathname = usePathname();
+  const fromPath = /^\/t\/([^/]+)/i.exec(pathname ?? "")?.[1];
+  const value = (code ?? fromPath ?? "").toUpperCase();
   return value ? `/t/${encodeURIComponent(value)}/regnskab` : null;
 }
 
