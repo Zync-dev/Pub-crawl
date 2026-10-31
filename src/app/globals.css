@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+@theme {
+  --color-night: #0b1020;
+  --color-surface: #141a2e;
+  --color-raised: #1d2540;
+  --color-line: #2a3354;
+  --color-ink: #f4f1ea;
+  --color-muted: #9aa3c0;
+  --color-gold: #f5b83d;
+  --color-gold-ink: #241a03;
+  --color-sky: #5ec8f2;
+  --color-danger: #f26b6b;
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--color-night);
+  color: var(--color-ink);
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  overscroll-behavior: none;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+/* Leaflet i mørkt tema */
+.leaflet-container {
+  background: #0e1426;
+  font-family: var(--font-sans);
+}
+
+.leaflet-control-attribution {
+  background: rgb(11 16 32 / 0.75) !important;
+  color: var(--color-muted) !important;
+  font-size: 10px;
+}
+
+.leaflet-control-attribution a {
+  color: var(--color-ink) !important;
+}
+
+.leaflet-bar a {
+  background: var(--color-surface) !important;
+  color: var(--color-ink) !important;
+  border-color: var(--color-line) !important;
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+.pc-marker {
+  background: none;
+  border: none;
+}

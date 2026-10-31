@@ -1,0 +1,55 @@
+import type { Drink, DrinkKind, Member, Stop } from "./types";
+
+export type MemberStats = {
+  member: Member;
+  units: number;
+  count: number;
+  water: number;
+  byKind: Partial<Record<DrinkKind, number>>;
+  lastAt: string | null;
+  perHour: number | null;
+};
+
+export function memberStats(members: Member[], drinks: Drink[], now: number) {
+  const stats: MemberStats[] = members.map((member) => {
+    const mine = drinks.filter((d) => d.user_id === member.user_id);
+    const byKind: Partial<Record<DrinkKind, number>> = {};
+    let units = 0;
+    for (const d of mine) {
+      byKind[d.kind] = (byKind[d.kind] ?? 0) + 1;
+      units += Number(d.units);
+    }
+    const alcoholic = mine.filter((d) => d.kind !== "water");
+    const first = alcoholic.length
+      ? Math.min(...alcoholic.map((d) => new Date(d.created_at).getTime()))
+      : null;
+    const hours = first ? (now - first) / 3_600_000 : 0;
+    return {
+      member,
+      units,
+      count: alcoholic.length,
+      water: byKind.water ?? 0,
+      byKind,
+      lastAt: mine.length ? mine[mine.length - 1].created_at : null,
+      perHour: first && hours >= 0.5 ? units / hours : null,
+    };
+  });
+  return stats.sort((a, b) => b.units - a.units || a.member.name.localeCompare(b.member.name));
+}
+
+export function kindTotals(drinks: Drink[]) {
+  const totals: Partial<Record<DrinkKind, number>> = {};
+  for (const d of drinks) totals[d.kind] = (totals[d.kind] ?? 0) + 1;
+  return totals;
+}
+
+export function stopTotals(stops: Stop[], drinks: Drink[]) {
+  return stops.map((stop) => {
+    const here = drinks.filter((d) => d.stop_id === stop.id);
+    return {
+      stop,
+      count: here.filter((d) => d.kind !== "water").length,
+      units: here.reduce((sum, d) => sum + Number(d.units), 0),
+    };
+  });
+}
