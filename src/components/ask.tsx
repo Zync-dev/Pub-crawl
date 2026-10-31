@@ -35,10 +35,19 @@ type Pending =
   | ({ kind: "confirm"; resolve: (ok: boolean) => void } & ConfirmOptions)
   | ({ kind: "prompt"; resolve: (value: string | null) => void } & PromptOptions);
 
+type ToastTone = "default" | "danger";
+
+// offline-undo: toasten kan få en knap (fx "Fortryd") og en længere visningstid.
+export type ToastOptions = {
+  tone?: ToastTone;
+  action?: { label: string; onClick: () => void };
+  duration?: number;
+};
+
 type Ask = {
   confirm: (o: ConfirmOptions) => Promise<boolean>;
   prompt: (o: PromptOptions) => Promise<string | null>;
-  toast: (message: string, tone?: "default" | "danger") => void;
+  toast: (message: string, options?: ToastTone | ToastOptions) => void;
 };
 
 const AskContext = createContext<Ask | null>(null);
@@ -57,7 +66,8 @@ export function AskProvider({ children }: { children: ReactNode }) {
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [toast, setToast] = useState<{
     message: string;
-    tone: "default" | "danger";
+    tone: ToastTone;
+    action?: ToastOptions["action"];
     id: number;
     leaving: boolean;
   } | null>(null);
@@ -81,14 +91,35 @@ export function AskProvider({ children }: { children: ReactNode }) {
       }),
     [open],
   );
-  const showToast = useCallback((message: string, tone: "default" | "danger" = "default") => {
+  const hideToast = useCallback((afterMs: number) => {
     toastTimers.current.forEach(clearTimeout);
-    setToast({ message, tone, id: Date.now(), leaving: false });
     toastTimers.current = [
-      setTimeout(() => setToast((t) => (t ? { ...t, leaving: true } : t)), 2600),
-      setTimeout(() => setToast(null), 2760),
+      setTimeout(() => setToast((t) => (t ? { ...t, leaving: true } : t)), afterMs),
+      setTimeout(() => setToast(null), afterMs + 160),
     ];
   }, []);
+  const showToast = useCallback(
+    (message: string, options: ToastTone | ToastOptions = "default") => {
+      const o = typeof options === "string" ? { tone: options } : options;
+      // Med en knap bliver toasten længere, så man kan nå at trykke.
+      const action = o.action;
+      setToast({
+        message,
+        tone: o.tone ?? "default",
+        id: Date.now(),
+        leaving: false,
+        action: action && {
+          label: action.label,
+          onClick: () => {
+            hideToast(0);
+            action.onClick();
+          },
+        },
+      });
+      hideToast(o.duration ?? (action ? 6000 : 2600));
+    },
+    [hideToast],
+  );
 
   // Svaret gives med det samme. Dialogen bliver lidt længere, så den kan glide ud.
   function close(result: boolean) {
@@ -159,7 +190,7 @@ export function AskProvider({ children }: { children: ReactNode }) {
           className="pointer-events-none fixed inset-x-0 z-[2100] flex justify-center px-4"
           style={{ bottom: "calc(96px + env(safe-area-inset-bottom))" }}
         >
-          <Toast message={toast.message} tone={toast.tone} leaving={toast.leaving} />
+          <Toast message={toast.message} tone={toast.tone} leaving={toast.leaving} action={toast.action} />
         </div>
       )}
     </AskContext.Provider>

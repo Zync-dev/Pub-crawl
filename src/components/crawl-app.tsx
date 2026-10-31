@@ -13,6 +13,8 @@ import type { Crawl, Drink, DrinkKind, LatLng, Member, Stop } from "@/lib/types"
 import { useArranger } from "@/lib/use-arranger"; // arranger
 import { useCrawl, useNow } from "@/lib/use-crawl";
 import { useCrewNotifications } from "@/lib/use-crew-notifications";
+import { useDrinkOutbox, type DrinkOutbox } from "@/lib/use-drink-outbox";
+import { useHolds } from "@/lib/use-holds";
 import { useLocationSharing } from "@/lib/use-location";
 import { useAsk } from "./ask";
 import { CrewTab } from "./crew-tab";
@@ -21,9 +23,11 @@ import { GamesProvider } from "./games/games-provider";
 import { GamesTab } from "./games/games-tab";
 import { MapTab } from "./map-tab";
 import { NowTab } from "./now-tab";
+import { OutboxBadge } from "./outbox-badge";
 import { RollCallBadge, RollCallProvider, useRollCallWithToasts } from "./roll-call"; // Er alle med? (rollcall)
 import { RoundsProvider } from "./rounds"; // Omgange
 import { StatsTab } from "./stats-tab";
+import { useUndoableActions, type UndoableActions } from "./use-undoable-actions";
 
 type Tab = "now" | "route" | "stats" | "crew" | "games";
 
@@ -44,6 +48,9 @@ function useActions(
   members: Member[],
   userId: string,
   patch: ReturnType<typeof useCrawl>["patch"],
+  // offline-undo: drinks går gennem køen, og Tjek ind, Videre og Fjern pub kan fortrydes.
+  outbox: DrinkOutbox,
+  undoable: UndoableActions,
 ) {
   const supabase = getSupabase();
   const ask = useAsk();
@@ -63,48 +70,10 @@ function useActions(
   }
 
   return {
-    async arrive(stop: Stop) {
-      const now = new Date().toISOString();
-      // games: udfordringen gemmes også som en række, så holdet kan stemme om den.
-      const drawn = drawChallenge(members, crawl.challenge);
-      const challenge = drawn.text;
-      patch((p) => ({
-        ...p,
-        crawl: { ...p.crawl, current_stop_id: stop.id, arrived_at: now, challenge, current_challenge_id: null },
-        stops: p.stops.map((s) => (s.id === stop.id ? { ...s, visited_at: s.visited_at ?? now } : s)),
-      }));
-      if (!stop.visited_at) {
-        await run(supabase.from("stops").update({ visited_at: now }).eq("id", stop.id));
-      }
-      const challengeId = await insertChallenge(supabase, {
-        crawl_id: id,
-        stop_id: stop.id,
-        text: challenge,
-        target_user_id: drawn.target?.user_id ?? null,
-      });
-      if (challengeId) patch((p) => ({ ...p, crawl: { ...p.crawl, current_challenge_id: challengeId } }));
-      const update = { current_stop_id: stop.id, arrived_at: now, challenge, ...challengeColumn(challengeId) };
-      if (await run(supabase.from("crawls").update(update).eq("id", id))) {
-        ask.toast(`Tjekket ind på ${stop.name}`);
-      }
-    },
-    async leave() {
-      patch((p) => ({
-        ...p,
-        crawl: { ...p.crawl, current_stop_id: null, arrived_at: null, challenge: null, current_challenge_id: null },
-      }));
-      await run(
-        supabase
-          .from("crawls")
-          .update({
-            current_stop_id: null,
-            arrived_at: null,
-            challenge: null,
-            ...challengeColumn(null),
-          })
-          .eq("id", id),
-      );
-    },
+    // offline-undo: med Fortryd i toasten. Se use-undoable-actions.ts.
+    // games: udfordringsrækken og current_challenge_id skrives også dér.
+    arrive: (stop: Stop) => undoable.arrive(stop),
+    leave: () => undoable.leave(),
     async newChallenge() {
       // games: en ny række for hver udfordring. Den gamle beholder sine stemmer.
       const drawn = drawChallenge(members, crawl.challenge);
@@ -177,38 +146,21 @@ function useActions(
       patch((p) => ({ ...p, stops: p.stops.map((s) => (s.id === stop.id ? { ...s, visited_at } : s)) }));
       await run(supabase.from("stops").update({ visited_at }).eq("id", stop.id));
     },
-    async deleteStop(stop: Stop) {
-      patch((p) => ({ ...p, stops: p.stops.filter((s) => s.id !== stop.id) }));
-      await run(supabase.from("stops").delete().eq("id", stop.id));
-    },
+    // offline-undo: med Fortryd i toasten. Se use-undoable-actions.ts.
+    deleteStop: (stop: Stop) => undoable.deleteStop(stop),
+    // offline-undo: drinken får sit id i browseren og sendes gennem køen, så den også tæller uden net.
     async addDrink(kind: DrinkKind) {
-      // Vises med det samme og byttes ud med rækken fra databasen, når den kommer.
-      const row = {
+      outbox.add({
         crawl_id: id,
         user_id: userId,
         stop_id: crawl.current_stop_id,
         kind,
         units: DRINK_BY_KIND[kind].units,
-      };
-      const temp: Drink = { ...row, id: `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`, created_at: new Date().toISOString() };
-      patch((p) => ({ ...p, drinks: [...p.drinks, temp] }));
-      const { data, error } = await supabase.from("drinks").insert(row).select().single<Drink>();
-      if (error || !data) {
-        patch((p) => ({ ...p, drinks: p.drinks.filter((d) => d.id !== temp.id) }));
-        ask.toast("Den kom ikke med. Prøv igen.", "danger");
-        return;
-      }
-      patch((p) => ({
-        ...p,
-        drinks: [...p.drinks.filter((d) => d.id !== temp.id && d.id !== data.id), data],
-      }));
+      });
     },
+    // offline-undo: venter den stadig, fjernes den bare fra køen. Ellers sættes sletningen i kø.
     async deleteDrink(drink: Drink) {
-      if (drink.id.startsWith("tmp-")) return;
-      patch((p) => ({ ...p, drinks: p.drinks.filter((d) => d.id !== drink.id) }));
-      if (!(await run(supabase.from("drinks").delete().eq("id", drink.id)))) {
-        patch((p) => ({ ...p, drinks: [...p.drinks, drink].sort((a, b) => a.created_at.localeCompare(b.created_at)) }));
-      }
+      outbox.remove(drink);
     },
     async rename(name: string) {
       const clean = name.trim().slice(0, 30);
@@ -233,7 +185,15 @@ function useActions(
 
 export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }) {
   const data = useCrawl(initial.id, initial);
-  const { crawl, members, stops, drinks } = data;
+  // offline-undo: fastholdte ændringer (Fortryd) og ventende drinks lægges oven på det, useCrawl har.
+  const ask = useAsk();
+  const held = useHolds(data.crawl, data.stops);
+  const outbox = useDrinkOutbox(initial.id, userId, data.drinks, data.patch, () =>
+    ask.toast("En drink kunne ikke gemmes.", "danger"),
+  );
+  const { members } = data;
+  const { crawl, stops } = held;
+  const { drinks } = outbox;
   const now = useNow(1000);
   const location = useLocationSharing(crawl.id, userId);
   // arranger: arrangørens værktøjer, ny kode og fjernet fra holdet.
@@ -250,7 +210,15 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
     setTab(next);
   }
 
-  const actions = useActions(crawl, stops, members, userId, data.patch);
+  const undoable = useUndoableActions({
+    crawl,
+    stops,
+    members,
+    patch: data.patch,
+    refetch: data.refetch,
+    hold: held.hold,
+  });
+  const actions = useActions(crawl, stops, members, userId, data.patch, outbox, undoable);
   const currentStop = stops.find((s) => s.id === crawl.current_stop_id) ?? null;
   const nextStop = currentStop ? null : (stops.find((s) => !s.visited_at) ?? null);
   const remaining = remainingMs(crawl, currentStop, now);
@@ -287,13 +255,15 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
     tab !== "now" && rollCall.open ? <RollCallBadge onOpen={() => changeTab("now")} /> : undefined;
 
   const headerRight =
-    data.offline || timerBadge || rollCallBadge ? (
+    data.offline || timerBadge || rollCallBadge || outbox.waiting > 0 ? (
       <div className="flex flex-col items-end gap-1.5">
         {data.offline && (
           <span className="pc-fade-in" role="status">
             <Badge tone="oxblood">Ingen forbindelse</Badge>
           </span>
         )}
+        {/* offline-undo: drinks, der venter på net. */}
+        {outbox.waiting > 0 && <OutboxBadge count={outbox.waiting} />}
         {timerBadge}
         {rollCallBadge}
       </div>
@@ -367,6 +337,7 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
                   now={now}
                   actions={actions}
                   onOpenRoute={() => changeTab("route")}
+                  pendingDrinkIds={outbox.waitingIds}
                 />
               </div>
             )}
