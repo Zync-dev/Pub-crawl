@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { DRINK_BY_KIND, DRINK_KINDS, formatUnits } from "@/lib/drinks";
 import { formatAgo } from "@/lib/geo";
 import { formatClock } from "@/lib/timer";
+import { notifyMove } from "@/lib/use-crew-notifications";
 import type { Crawl, Drink, DrinkKind, Stop } from "@/lib/types";
 import { useAsk } from "./ask";
 import type { CrawlActions } from "./crawl-app";
@@ -94,11 +95,12 @@ function AtPub({
       confirm: "Ja, vi går videre",
       cancel: "Ikke endnu",
     });
-    if (ok) {
-      await actions.leave();
-      // Er alle med? (rollcall): tæl holdet, når I går videre.
-      void rollCall.start(stop.id, following?.id ?? null);
-    }
+    if (!ok) return;
+    await actions.leave();
+    // pwa-push: de andre får besked om, at holdet går videre.
+    notifyMove(crawl, stop, following);
+    // Er alle med? (rollcall): tæl holdet, når I går videre.
+    void rollCall.start(stop.id, following?.id ?? null);
   }
 
   return (

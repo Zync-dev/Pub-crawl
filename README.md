@@ -31,4 +31,20 @@ Bemærk: en webapp kan kun dele positionen, mens den er åben. På iPhone stoppe
    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
    ```
 
-4. `pnpm install` og `pnpm dev`.
+4. Til push-beskeder: lav VAPID-nøgler med `npx web-push generate-vapid-keys --json`, og tilføj dem til `.env.local` (og til Vercel):
+
+   ```
+   NEXT_PUBLIC_VAPID_PUBLIC_KEY=<publicKey>
+   VAPID_PRIVATE_KEY=<privateKey>
+   VAPID_SUBJECT=mailto:<din mail>
+   ```
+
+   Den private nøgle må aldrig ligge i koden eller i en `NEXT_PUBLIC_`-variabel. Uden nøglerne virker appen som før, bare uden beskeder.
+
+5. `pnpm install` og `pnpm dev`.
+
+## Hjemmeskærm og beskeder
+
+- `public/sw.js` er en service worker, der kun viser push-beskeder. Den gemmer ingen sider.
+- Under Holdet → Indstillinger slår man "Giv besked på telefonen" til. På iPhone virker det først, når appen ligger på hjemmeskærmen (iOS 16.4 eller nyere).
+- Beskeder sendes fra `POST /api/push` med brugerens egen adgangsnøgle. Databasefunktionen `push_targets` tjekker medlemskab og sørger for, at den samme besked kun sendes én gang (`notifications_sent`).

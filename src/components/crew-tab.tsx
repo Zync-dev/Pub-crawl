@@ -11,6 +11,8 @@ import type { ArrangerTools } from "@/lib/use-arranger"; // arranger
 import type { useLocationSharing } from "@/lib/use-location";
 import { ArrangerCard } from "./arranger-card"; // arranger
 import { useAsk } from "./ask";
+import { InstallCard } from "./install-card";
+import { PushSettings } from "./push-settings";
 import type { CrawlActions } from "./crawl-app";
 import { Avatar, Badge, Button, Card, Switch, Tabs } from "./ds";
 import { RoundsGiven } from "./rounds"; // Omgange
@@ -182,6 +184,10 @@ function Settings({
         </p>
         {location.error && <p className="text-[13px] text-oxblood-500">{location.error}</p>}
       </Card>
+
+      {/* pwa-push: beskeder og hjemmeskærm */}
+      <PushSettings />
+      <InstallCard />
 
       {/* arranger: kun arrangøren ser sit kort */}
       {arranger.isArranger && <ArrangerCard crawl={crawl} members={members} userId={userId} arranger={arranger} />}

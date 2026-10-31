@@ -10,6 +10,7 @@ import { formatClock, formatTime, remainingMs } from "@/lib/timer";
 import type { Crawl, Drink, DrinkKind, LatLng, Stop } from "@/lib/types";
 import { useArranger } from "@/lib/use-arranger"; // arranger
 import { useCrawl, useNow } from "@/lib/use-crawl";
+import { useCrewNotifications } from "@/lib/use-crew-notifications";
 import { useLocationSharing } from "@/lib/use-location";
 import { useAsk } from "./ask";
 import { CrewTab } from "./crew-tab";
@@ -212,6 +213,8 @@ export function CrawlApp({ initial, userId }: { initial: Crawl; userId: string }
   const remaining = remainingMs(crawl, currentStop, now);
   // Er alle med? (rollcall): opråbet deles af Nu, headeren og Videre-flowet via RollCallProvider.
   const rollCall = useRollCallWithToasts(crawl.id, userId, members, now);
+  // pwa-push: "Sidste omgang" til holdet, når timeren løber ud.
+  useCrewNotifications(crawl, currentStop, remaining);
 
   const back = (
     <Link href="/" className="pc-btn pc-btn--ghost pc-btn--sm" style={{ paddingLeft: 6 }}>
